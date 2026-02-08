@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aex-provider-registry
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-provider-registry
+    app.kubernetes.io/component: provider-registry
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aex-provider-registry
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http

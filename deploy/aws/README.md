@@ -1,8 +1,15 @@
 # AWS Deployment Guide
 
-This guide explains how to deploy Agent Exchange (AEX) and demo agents to AWS using ECS Fargate and CloudFormation.
+This guide explains how to deploy Agent Exchange (AEX) and demo agents to AWS. Two deployment options are supported:
+
+- **ECS Fargate** -- Serverless containers, simpler operational model
+- **EKS (Kubernetes)** -- Full Kubernetes, richer ecosystem, advanced scheduling
+
+Both options share the same infrastructure foundation (VPC, ECR, Secrets Manager).
 
 ## Prerequisites
+
+### Common (both ECS and EKS)
 
 1. **AWS Account** with appropriate permissions
 2. **AWS CLI** installed and configured (`aws configure`)
@@ -10,7 +17,13 @@ This guide explains how to deploy Agent Exchange (AEX) and demo agents to AWS us
 4. **API Keys** for LLM providers:
    - Anthropic API Key (for Claude - used by all agents)
 
-## Architecture8
+### Additional for EKS
+
+5. **kubectl** -- Kubernetes CLI ([install](https://kubernetes.io/docs/tasks/tools/))
+6. **helm** -- Kubernetes package manager ([install](https://helm.sh/docs/intro/install/))
+7. **eksctl** (optional) -- EKS management CLI ([install](https://eksctl.io/installation/))
+
+## ECS Fargate Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -387,4 +400,283 @@ Check that services are registered in Service Discovery:
 aws servicediscovery list-instances \
   --service-id <service-id> \
   --region us-east-1
+```
+
+---
+
+## EKS Deployment (Kubernetes)
+
+### EKS Architecture
+
+```
++-----------------------------------------------------------------------------+
+|                               AWS Cloud                                      |
+|                                                                              |
+|  +-----------------------------------------------------------------------+  |
+|  |                    Nginx Ingress / AWS ALB                             |  |
+|  |                        (Public LB)                                    |  |
+|  +-----------------------------------------------------------------------+  |
+|           |                                      |                           |
+|           | /api/*                              | /*                         |
+|           v                                      v                           |
+|  +-------------+                        +---------------+                    |
+|  | AEX Gateway |                        | Demo UI       |                    |
+|  | (8080)      |                        | NiceGUI(8502) |                    |
+|  +-------------+                        +---------------+                    |
+|           |                                      |                           |
+|  +--------+----------------------------------------------+                   |
+|  |                    EKS Cluster (K8s)                   |                   |
+|  |  Namespace: aex                                        |                   |
+|  |                                                        |                   |
+|  |  +--- AEX Core (Deployments) -----------------------+ |                   |
+|  |  | provider-registry  work-publisher  bid-gateway    | |                   |
+|  |  | bid-evaluator  contract-engine  settlement        | |                   |
+|  |  | trust-broker  identity  telemetry                 | |                   |
+|  |  | credentials-provider                              | |                   |
+|  |  +---------------------------------------------------+ |                   |
+|  |                                                        |                   |
+|  |  +--- Code Review Demo (Deployments) ---------------+ |                   |
+|  |  | code-reviewer-a  code-reviewer-b  code-reviewer-c | |                   |
+|  |  | orchestrator                                      | |                   |
+|  |  +---------------------------------------------------+ |                   |
+|  |                                                        |                   |
+|  |  +--- Payment Agents (Deployments) -----------------+ |                   |
+|  |  | payment-devpay  payment-codeauditpay              | |                   |
+|  |  | payment-securitypay                               | |                   |
+|  |  +---------------------------------------------------+ |                   |
+|  |                                                        |                   |
+|  |  +--- Data (StatefulSet) ---------------------------+ |                   |
+|  |  | MongoDB:27017                                     | |                   |
+|  |  +---------------------------------------------------+ |                   |
+|  |                                                        |                   |
+|  |  Add-ons: CoreDNS, kube-proxy, vpc-cni, ebs-csi     |                   |
+|  |  Helm: AWS LB Controller, Nginx Ingress,             |                   |
+|  |        External Secrets, Metrics Server              |                   |
+|  +--------------------------------------------------------+                   |
+|                                                                              |
+|  +--- Shared Infrastructure (CloudFormation) ----------------------------+  |
+|  | VPC (public+private subnets) | ECR | Secrets Manager | IAM | ALB     |  |
+|  +-----------------------------------------------------------------------+  |
++------------------------------------------------------------------------------+
+```
+
+### EKS Quick Start
+
+```bash
+# 1. Set up prerequisites and create cluster
+hack/deploy/setup-eks.sh
+
+# 2. Deploy all services to EKS
+deploy/aws/deploy-eks.sh --region us-east-1 --env dev
+
+# 3. Verify
+kubectl get pods -n aex
+
+# 4. Access services locally
+kubectl port-forward svc/aex-gateway 8080:8080 -n aex
+kubectl port-forward svc/demo-ui-nicegui 8502:8502 -n aex
+```
+
+### EKS Quick Start (Step by Step)
+
+```bash
+# 1. Install prerequisites
+hack/deploy/setup-eks.sh prerequisites
+
+# 2. Validate configuration
+hack/deploy/setup-eks.sh validate
+
+# 3. Create the cluster
+hack/deploy/setup-eks.sh cluster
+
+# 4. Install add-ons (LB controller, ingress, metrics)
+hack/deploy/setup-eks.sh addons
+
+# 5. Deploy services
+deploy/aws/deploy-eks.sh --region us-east-1 --env dev
+```
+
+### EKS CloudFormation Stack
+
+The EKS deployment adds one CloudFormation stack on top of the shared infrastructure:
+
+#### eks-cluster.yaml
+
+Creates EKS-specific resources:
+- EKS cluster (Kubernetes 1.29)
+- Managed node group (auto-scaling)
+- IAM roles: cluster role, node group role
+- OIDC provider for IRSA (IAM Roles for Service Accounts)
+- IRSA roles: pod role, AWS LB controller role, EBS CSI driver role
+- Security groups: cluster SG, node SG
+- EKS add-ons: CoreDNS, kube-proxy, vpc-cni, ebs-csi-driver
+- CloudWatch log groups
+
+Parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| EnvironmentName | aex | Prefix for resource names |
+| Environment | dev | dev, staging, or production |
+| ClusterName | aex-eks | EKS cluster name |
+| KubernetesVersion | 1.29 | K8s version |
+| NodeInstanceType | t3.medium | EC2 instance type |
+| MinSize | 2 | Min nodes (3 for prod) |
+| MaxSize | 5 | Max nodes (10 for prod) |
+| DesiredSize | 2 | Desired nodes (3 for prod) |
+
+### ECS vs EKS Comparison
+
+| Feature | ECS Fargate | EKS |
+|---------|-------------|-----|
+| **Compute** | Serverless (no nodes) | Managed EC2 node groups |
+| **Complexity** | Lower | Higher (full K8s) |
+| **Scaling** | Per-task auto-scaling | HPA + Cluster Autoscaler |
+| **Service Discovery** | AWS Cloud Map | K8s DNS (CoreDNS) |
+| **Secrets** | ECS Secrets integration | External Secrets Operator / IRSA |
+| **Load Balancing** | ALB target groups | Ingress controllers |
+| **Cost (dev)** | ~$150/month | ~$183/month (+EKS fee) |
+| **Cost (prod)** | Higher per-task cost | Better at scale with Spot |
+| **Ecosystem** | AWS-native | K8s ecosystem (Helm, Kustomize) |
+| **Portability** | AWS only | Multi-cloud capable |
+| **CI/CD** | cd-aws.yml | cd-aws-eks.yml |
+| **Deploy script** | deploy.sh | deploy-eks.sh |
+| **Setup script** | hack/deploy/setup-aws.sh | hack/deploy/setup-eks.sh |
+| **Teardown** | hack/deploy/teardown-aws.sh | hack/deploy/teardown-eks.sh |
+
+### EKS Monitoring
+
+#### CloudWatch Container Insights
+
+EKS cluster logging is enabled for all control plane log types (api, audit, authenticator, controllerManager, scheduler). Logs are stored in:
+
+```
+/aws/eks/aex-eks/cluster          -- Control plane logs
+/aws/containerinsights/aex-eks/   -- Container Insights
+```
+
+#### kubectl Monitoring
+
+```bash
+# View pod status
+kubectl get pods -n aex -o wide
+
+# View pod resource usage (requires metrics-server)
+kubectl top pods -n aex
+
+# View node resource usage
+kubectl top nodes
+
+# View pod logs
+kubectl logs -f deployment/aex-gateway -n aex
+
+# Describe a problematic pod
+kubectl describe pod <pod-name> -n aex
+
+# View events
+kubectl get events -n aex --sort-by='.lastTimestamp'
+```
+
+### EKS Scaling
+
+#### Horizontal Pod Autoscaler (HPA)
+
+```bash
+# Create HPA for gateway (2-10 replicas, target 70% CPU)
+kubectl autoscale deployment aex-gateway \
+  --min=2 --max=10 --cpu-percent=70 -n aex
+
+# View HPA status
+kubectl get hpa -n aex
+```
+
+#### Manual Scaling
+
+```bash
+# Scale a specific deployment
+kubectl scale deployment/aex-gateway --replicas=3 -n aex
+
+# Scale all deployments to 0 (cost saving)
+kubectl get deployments -n aex -o name | \
+  xargs -I {} kubectl scale {} --replicas=0 -n aex
+
+# Scale all back to 1
+kubectl get deployments -n aex -o name | \
+  xargs -I {} kubectl scale {} --replicas=1 -n aex
+```
+
+#### Cluster Autoscaler
+
+The cluster autoscaler is installed by `setup-eks.sh` and automatically adjusts the number of nodes based on pod scheduling demands. Configuration:
+
+- Scale-down delay after add: 5 minutes
+- Scale-down unneeded time: 5 minutes
+- Expander strategy: least-waste
+
+### EKS Cleanup
+
+```bash
+# Delete EKS resources only (keep shared infrastructure)
+hack/deploy/teardown-eks.sh
+
+# Delete everything including shared VPC, ECR, secrets
+hack/deploy/teardown-eks.sh --include-infra
+
+# Quick cleanup via deploy script
+deploy/aws/deploy-eks.sh --clean
+```
+
+### EKS Troubleshooting
+
+#### Pods Not Starting
+
+```bash
+# Check pod status and events
+kubectl describe pod <pod-name> -n aex
+
+# Check if image pull is failing
+kubectl get events -n aex --field-selector reason=Failed
+
+# Verify ECR images exist
+aws ecr describe-images --repository-name aex/aex-gateway --region us-east-1
+```
+
+#### Node Issues
+
+```bash
+# Check node status
+kubectl get nodes -o wide
+
+# Check node conditions
+kubectl describe node <node-name>
+
+# View cluster autoscaler logs
+kubectl logs -f deployment/cluster-autoscaler -n kube-system
+```
+
+#### IRSA / Secret Issues
+
+```bash
+# Verify service account annotation
+kubectl get sa aex-service-account -n aex -o yaml
+
+# Test secret access from a pod
+kubectl exec -it deployment/aex-gateway -n aex -- \
+  env | grep -i secret
+
+# Check External Secrets Operator
+kubectl get externalsecrets -n aex
+```
+
+#### Ingress Not Working
+
+```bash
+# Check ingress status
+kubectl get ingress -n aex
+
+# Check nginx-ingress controller logs
+kubectl logs -f deployment/ingress-nginx-controller -n ingress-nginx
+
+# Check AWS LB controller logs
+kubectl logs -f deployment/aws-load-balancer-controller -n kube-system
 ```

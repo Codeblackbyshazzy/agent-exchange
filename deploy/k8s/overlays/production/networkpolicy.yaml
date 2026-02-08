@@ -1,0 +1,102 @@
+---
+# Default deny all ingress in the aex namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow ingress to aex-gateway from the ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-gateway
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: aex-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow ingress to demo-ui-nicegui from the ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-ui
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: demo-ui-nicegui
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8502
+---
+# Allow all intra-namespace communication within aex
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: agent-exchange
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: agent-exchange
+---
+# Allow MongoDB access only from AEX services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mongodb-from-aex
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mongodb
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: agent-exchange
+      ports:
+        - protocol: TCP
+          port: 27017

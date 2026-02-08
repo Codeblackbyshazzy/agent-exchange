@@ -1,0 +1,55 @@
+agent:
+  name: "CodeAuditPay"
+  description: "Code audit payment specialist - highest rewards on code review work"
+  version: "1.0.0"
+  provider:
+    organization: "CodeAuditPay Solutions"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8201
+
+# Payment provider characteristics
+payment:
+  base_fee_percent: 2.5
+  processing_time_seconds: 5
+  fraud_protection: "standard"
+  supported_methods:
+    - "card"
+    - "bank_transfer"
+    - "aex_balance"
+
+  # Category-specific rewards (cashback percentages)
+  # Specializes in code audits and reviews
+  rewards:
+    code_review: 3.0          # 3% back on code review → net -0.5% (CASHBACK!)
+    security_audit: 3.5       # 3.5% back on security audit → net -1.0% (CASHBACK!)
+    architecture_review: 2.5  # 2.5% back on architecture → net 0% (FREE!)
+    development: 1.0          # 1% back on development → net 1.5%
+    linting: 0.5              # 0.5% back on linting → net 2.0%
+    default: 1.0              # 1% back on other → net 1.5%
+
+  # Marketing copy
+  tagline: "Get PAID to pay for code audits - up to 1.0% cashback!"
+  best_for: "Code reviews, security audits, architecture reviews"
+
+skills:
+  - id: "payment_processing"
+    name: "Payment Processing"
+    description: "Process payments with bonus rewards for code audit work"
+    tags: ["payment", "code_review", "security_audit"]
+    examples:
+      - "Process payment for code review"
+      - "Process payment for security audit"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "TRUSTED"
+  trust_score: 0.88
+  pricing:
+    base_rate: 0.0
+    currency: "USD"

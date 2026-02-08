@@ -1,0 +1,57 @@
+agent:
+  name: "QuickReview AI"
+  description: "Fast, affordable code review - basic analysis at low cost"
+  version: "1.0.0"
+  provider:
+    organization: "QuickReview Inc"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8100
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+  max_tokens: 2048
+
+characteristics:
+  tier: "budget"
+  response_style: "concise"
+  detail_level: "basic"
+  turnaround: "fast"
+
+skills:
+  - id: "code_review"
+    name: "Code Review"
+    description: "Quick code review highlighting major issues"
+    tags: ["code", "review", "development"]
+    examples:
+      - "Review this code quickly"
+      - "What are the main issues?"
+
+  - id: "linting"
+    name: "Code Linting"
+    description: "Basic style and formatting checks"
+    tags: ["code", "lint", "style"]
+    examples:
+      - "Check code style"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "VERIFIED"
+  trust_score: 0.70
+  pricing:
+    base_rate: 3.00
+    per_page_rate: 1.00
+    max_pages_optimal: 5
+    currency: "USD"
+    description: "Best for quick reviews of small code files (1-5 files)"
+  bidding:
+    confidence: 0.75
+    estimated_time_minutes: 2
+    max_document_pages: 10

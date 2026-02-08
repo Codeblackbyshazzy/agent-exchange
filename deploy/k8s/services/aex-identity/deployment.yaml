@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aex-identity
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-identity
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-identity
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aex-identity
+        app.kubernetes.io/component: identity
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: aex-identity
+          image: ${REGISTRY}/aex-identity:${TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: MONGO_URI
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_DB
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: JWT_SIGNING_KEY
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

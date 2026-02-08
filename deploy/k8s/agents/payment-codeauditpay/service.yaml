@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-codeauditpay
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: payment-codeauditpay
+    app.kubernetes.io/component: payment-agent
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payment-codeauditpay
+  ports:
+    - port: 8201
+      targetPort: 8201
+      protocol: TCP
+      name: http

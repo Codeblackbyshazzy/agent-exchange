@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aex-settlement
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-settlement
+    app.kubernetes.io/component: settlement
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-settlement
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aex-settlement
+        app.kubernetes.io/component: settlement
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: aex-settlement
+          image: ${REGISTRY}/aex-settlement:${TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: ENVIRONMENT
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: MONGO_URI
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_DB
+            - name: AP2_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: AP2_ENABLED
+            - name: CREDENTIALS_PROVIDER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CREDENTIALS_PROVIDER_URL
+            - name: DEVPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: DEVPAY_URL
+            - name: CODEAUDITPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CODEAUDITPAY_URL
+            - name: SECURITYPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: SECURITYPAY_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

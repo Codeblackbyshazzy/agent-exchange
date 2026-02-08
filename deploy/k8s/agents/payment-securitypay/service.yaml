@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-securitypay
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: payment-securitypay
+    app.kubernetes.io/component: payment-agent
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payment-securitypay
+  ports:
+    - port: 8202
+      targetPort: 8202
+      protocol: TCP
+      name: http

@@ -1,0 +1,105 @@
+---
+# PodDisruptionBudget for aex-gateway
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-gateway-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-gateway
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-gateway
+---
+# PodDisruptionBudget for aex-bid-gateway
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-bid-gateway-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-bid-gateway
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-bid-gateway
+---
+# PodDisruptionBudget for aex-contract-engine
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-contract-engine-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-contract-engine
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-contract-engine
+---
+# PodDisruptionBudget for aex-settlement
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-settlement-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-settlement
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-settlement
+---
+# PodDisruptionBudget for aex-provider-registry
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-provider-registry-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-provider-registry
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-provider-registry
+---
+# PodDisruptionBudget for aex-identity
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aex-identity-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-identity
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-identity
+---
+# PodDisruptionBudget for mongodb
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mongodb-pdb
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: mongodb
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mongodb

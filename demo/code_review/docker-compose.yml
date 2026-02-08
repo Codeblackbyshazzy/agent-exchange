@@ -1,0 +1,453 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # AEX Core Services
+  # ===========================================
+
+  mongo:
+    image: mongo:7
+    container_name: cr-aex-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    ports:
+      - "27017:27017"
+    volumes:
+      - cr_mongo_data:/data/db
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  aex-gateway:
+    build:
+      context: ../../src
+      dockerfile: aex-gateway/Dockerfile
+    container_name: cr-aex-gateway
+    environment:
+      PORT: "8080"
+      IDENTITY_URL: "http://aex-identity:8080"
+      BID_GATEWAY_URL: "http://aex-bid-gateway:8080"
+      PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
+      CONTRACT_ENGINE_URL: "http://aex-contract-engine:8080"
+      TRUST_BROKER_URL: "http://aex-trust-broker:8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - aex-identity
+      - aex-bid-gateway
+      - aex-provider-registry
+      - aex-contract-engine
+      - aex-trust-broker
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  aex-work-publisher:
+    build:
+      context: ../../src
+      dockerfile: aex-work-publisher/Dockerfile
+    container_name: cr-aex-work-publisher
+    environment:
+      PORT: "8080"
+      STORE_TYPE: "mongo"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+      MONGO_COLLECTION_WORK: "work_specs"
+      PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
+      ENVIRONMENT: "development"
+    ports:
+      - "8081:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      aex-provider-registry:
+        condition: service_started
+    networks:
+      - cr-network
+
+  aex-bid-gateway:
+    build:
+      context: ../../src
+      dockerfile: aex-bid-gateway/Dockerfile
+    container_name: cr-aex-bid-gateway
+    environment:
+      PORT: "8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+      PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
+    ports:
+      - "8082:8080"
+    depends_on:
+      - mongo
+      - aex-provider-registry
+    networks:
+      - cr-network
+
+  aex-bid-evaluator:
+    build:
+      context: ../../src
+      dockerfile: aex-bid-evaluator/Dockerfile
+    container_name: cr-aex-bid-evaluator
+    environment:
+      PORT: "8080"
+      BID_GATEWAY_URL: "http://aex-bid-gateway:8080"
+      TRUST_BROKER_URL: "http://aex-trust-broker:8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8083:8080"
+    depends_on:
+      - mongo
+      - aex-bid-gateway
+      - aex-trust-broker
+    networks:
+      - cr-network
+
+  aex-contract-engine:
+    build:
+      context: ../../src
+      dockerfile: aex-contract-engine/Dockerfile
+    container_name: cr-aex-contract-engine
+    environment:
+      PORT: "8080"
+      BID_GATEWAY_URL: "http://aex-bid-gateway:8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8084:8080"
+    depends_on:
+      - mongo
+      - aex-bid-gateway
+    networks:
+      - cr-network
+
+  aex-provider-registry:
+    build:
+      context: ../../src
+      dockerfile: aex-provider-registry/Dockerfile
+    container_name: cr-aex-provider-registry
+    environment:
+      PORT: "8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+      ENVIRONMENT: "development"
+    ports:
+      - "8085:8080"
+    depends_on:
+      - mongo
+    networks:
+      - cr-network
+
+  aex-trust-broker:
+    build:
+      context: ../../src
+      dockerfile: aex-trust-broker/Dockerfile
+    container_name: cr-aex-trust-broker
+    environment:
+      PORT: "8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8086:8080"
+    depends_on:
+      - mongo
+    networks:
+      - cr-network
+
+  aex-identity:
+    build:
+      context: ../../src
+      dockerfile: aex-identity/Dockerfile
+    container_name: cr-aex-identity
+    environment:
+      PORT: "8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8087:8080"
+    depends_on:
+      - mongo
+    networks:
+      - cr-network
+
+  aex-settlement:
+    build:
+      context: ../../src
+      dockerfile: aex-settlement/Dockerfile
+    container_name: cr-aex-settlement
+    environment:
+      PORT: "8080"
+      ENVIRONMENT: "development"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+      AP2_ENABLED: "true"
+      CREDENTIALS_PROVIDER_URL: "http://aex-credentials-provider:8080"
+      DEVPAY_URL: "http://payment-devpay:8200"
+      CODEAUDITPAY_URL: "http://payment-codeauditpay:8201"
+      SECURITYPAY_URL: "http://payment-securitypay:8202"
+    ports:
+      - "8088:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      aex-credentials-provider:
+        condition: service_started
+    networks:
+      - cr-network
+
+  aex-credentials-provider:
+    build:
+      context: ../../src
+      dockerfile: aex-credentials-provider/Dockerfile
+    container_name: cr-aex-credentials-provider
+    environment:
+      PORT: "8080"
+      ENVIRONMENT: "development"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8090:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  aex-telemetry:
+    build:
+      context: ../../src
+      dockerfile: aex-telemetry/Dockerfile
+    container_name: cr-aex-telemetry
+    environment:
+      PORT: "8080"
+    ports:
+      - "8089:8080"
+    networks:
+      - cr-network
+
+  # ===========================================
+  # Code Review Agents (Tiered Pricing)
+  # ===========================================
+
+  # Budget Code Reviewer - $3 + $1/file, fast, concise review (Claude)
+  code-reviewer-a:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: code-reviewer-a
+    container_name: cr-code-reviewer-a
+    ports:
+      - "8100:8100"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AEX_GATEWAY_URL=http://aex-gateway:8080
+      - AEX_API_KEY=dev-api-key
+      - AGENT_HOSTNAME=code-reviewer-a
+      - CONFIG_PATH=config.yaml
+    depends_on:
+      - aex-gateway
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Standard Code Reviewer - $10 + $3/file, security-focused review (Claude)
+  code-reviewer-b:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: code-reviewer-b
+    container_name: cr-code-reviewer-b
+    ports:
+      - "8101:8101"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AEX_GATEWAY_URL=http://aex-gateway:8080
+      - AEX_API_KEY=dev-api-key
+      - AGENT_HOSTNAME=code-reviewer-b
+      - CONFIG_PATH=config.yaml
+    depends_on:
+      - aex-gateway
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8101/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Premium Code Reviewer - $25 + $5/file, deep architectural review (Claude)
+  code-reviewer-c:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: code-reviewer-c
+    container_name: cr-code-reviewer-c
+    ports:
+      - "8102:8102"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AEX_GATEWAY_URL=http://aex-gateway:8080
+      - AEX_API_KEY=dev-api-key
+      - AGENT_HOSTNAME=code-reviewer-c
+      - CONFIG_PATH=config.yaml
+    depends_on:
+      - aex-gateway
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8102/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Code Review Orchestrator
+  orchestrator:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: orchestrator
+    container_name: cr-orchestrator
+    ports:
+      - "8103:8103"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AEX_GATEWAY_URL=http://aex-gateway:8080
+      - AEX_API_KEY=dev-api-key
+      - CONFIG_PATH=config.yaml
+    depends_on:
+      - aex-gateway
+      - code-reviewer-a
+      - code-reviewer-b
+      - code-reviewer-c
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8103/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================
+  # Payment Provider Agents (AP2 - Competing)
+  # ===========================================
+
+  # DevPay - General dev payments (2% fee, 1% reward on code_review = 1% net)
+  payment-devpay:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: payment-devpay
+    container_name: cr-payment-devpay
+    ports:
+      - "8200:8200"
+    environment:
+      - CONFIG_PATH=config.yaml
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # CodeAuditPay - Code audit specialist (2.5% fee, 3% reward on code_review = -0.5% CASHBACK!)
+  payment-codeauditpay:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: payment-codeauditpay
+    container_name: cr-payment-codeauditpay
+    ports:
+      - "8201:8201"
+    environment:
+      - CONFIG_PATH=config.yaml
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8201/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # SecurityPay - Security specialist (3% fee, 4% reward on security = -1% CASHBACK!)
+  payment-securitypay:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile
+      args:
+        AGENT_DIR: payment-securitypay
+    container_name: cr-payment-securitypay
+    ports:
+      - "8202:8202"
+    environment:
+      - CONFIG_PATH=config.yaml
+    networks:
+      - cr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8202/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================
+  # NiceGUI Demo UI (Real-Time WebSocket)
+  # ===========================================
+  demo-ui-nicegui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: cr-demo-ui-nicegui
+    ports:
+      - "8502:8502"
+    environment:
+      - PORT=8502
+      - AEX_GATEWAY_URL=http://aex-gateway:8080
+      - AEX_SETTLEMENT_URL=http://aex-settlement:8080
+      - AEX_PROVIDER_REGISTRY_URL=http://aex-provider-registry:8080
+      - CODE_REVIEWER_A_URL=http://code-reviewer-a:8100
+      - CODE_REVIEWER_B_URL=http://code-reviewer-b:8101
+      - CODE_REVIEWER_C_URL=http://code-reviewer-c:8102
+      - DEVPAY_URL=http://payment-devpay:8200
+      - CODEAUDITPAY_URL=http://payment-codeauditpay:8201
+      - SECURITYPAY_URL=http://payment-securitypay:8202
+    depends_on:
+      - orchestrator
+      - aex-settlement
+      - aex-provider-registry
+      - payment-devpay
+      - payment-codeauditpay
+      - payment-securitypay
+    networks:
+      - cr-network
+
+volumes:
+  cr_mongo_data:
+
+networks:
+  cr-network:
+    driver: bridge

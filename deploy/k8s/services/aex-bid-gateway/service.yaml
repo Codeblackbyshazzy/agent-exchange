@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aex-bid-gateway
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-bid-gateway
+    app.kubernetes.io/component: bid-gateway
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aex-bid-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aex-contract-engine
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-contract-engine
+    app.kubernetes.io/component: contract-engine
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aex-contract-engine
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
