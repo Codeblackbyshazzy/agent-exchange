@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aex-contract-engine
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-contract-engine
+    app.kubernetes.io/component: contract-engine
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-contract-engine
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aex-contract-engine
+        app.kubernetes.io/component: contract-engine
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: aex-contract-engine
+          image: ${REGISTRY}/aex-contract-engine:${TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: BID_GATEWAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: BID_GATEWAY_URL
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: MONGO_URI
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_DB
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

@@ -1,0 +1,53 @@
+agent:
+  name: "DevPay"
+  description: "General development payment processor - fast and affordable"
+  version: "1.0.0"
+  provider:
+    organization: "DevPay Solutions"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8200
+
+# Payment provider characteristics
+payment:
+  base_fee_percent: 2.0
+  processing_time_seconds: 3
+  fraud_protection: "basic"
+  supported_methods:
+    - "card"
+    - "aex_balance"
+
+  # Category-specific rewards (cashback percentages)
+  # General development focus
+  rewards:
+    code_review: 1.0       # 1% back on code review → net 1.0%
+    development: 1.5       # 1.5% back on development → net 0.5%
+    linting: 0.5           # 0.5% back on linting → net 1.5%
+    security_audit: 0.5    # 0.5% back on security → net 1.5%
+    architecture_review: 0.5
+    default: 0.5           # 0.5% back on other → net 1.5%
+
+  # Marketing copy
+  tagline: "Fast, affordable payment processing for dev work"
+  best_for: "General code reviews, development tasks"
+
+skills:
+  - id: "payment_processing"
+    name: "Payment Processing"
+    description: "Process payments for development services"
+    tags: ["payment", "development", "code_review"]
+    examples:
+      - "Process payment for code review"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "TRUSTED"
+  trust_score: 0.82
+  pricing:
+    base_rate: 0.0
+    currency: "USD"

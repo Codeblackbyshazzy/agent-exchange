@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-ui-nicegui
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: demo-ui-nicegui
+    app.kubernetes.io/component: ui
+    app.kubernetes.io/part-of: agent-exchange
+  annotations:
+    description: "NiceGUI real-time WebSocket dashboard for code review demo"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-ui-nicegui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-ui-nicegui
+        app.kubernetes.io/component: ui
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: demo-ui-nicegui
+          image: ${REGISTRY}/code-review-demo-ui-nicegui:${TAG}
+          ports:
+            - containerPort: 8502
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8502"
+            - name: AEX_GATEWAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: AEX_GATEWAY_URL
+            - name: AEX_SETTLEMENT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: SETTLEMENT_URL
+            - name: AEX_PROVIDER_REGISTRY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: PROVIDER_REGISTRY_URL
+            - name: CODE_REVIEWER_A_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CODE_REVIEWER_A_URL
+            - name: CODE_REVIEWER_B_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CODE_REVIEWER_B_URL
+            - name: CODE_REVIEWER_C_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CODE_REVIEWER_C_URL
+            - name: DEVPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: DEVPAY_URL
+            - name: CODEAUDITPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: CODEAUDITPAY_URL
+            - name: SECURITYPAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: SECURITYPAY_URL
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: 8502
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8502
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

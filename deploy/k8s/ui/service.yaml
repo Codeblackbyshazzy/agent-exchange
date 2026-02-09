@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-ui-nicegui
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: demo-ui-nicegui
+    app.kubernetes.io/component: ui
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: demo-ui-nicegui
+  ports:
+    - port: 8502
+      targetPort: 8502
+      protocol: TCP
+      name: http

@@ -1,0 +1,56 @@
+agent:
+  name: "SecurityPay"
+  description: "Security-focused payment processor - premium rewards on security audits"
+  version: "1.0.0"
+  provider:
+    organization: "SecurityPay Global"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8202
+
+# Payment provider characteristics
+payment:
+  base_fee_percent: 3.0
+  processing_time_seconds: 7
+  fraud_protection: "advanced"
+  supported_methods:
+    - "card"
+    - "bank_transfer"
+    - "aex_balance"
+    - "crypto"
+
+  # Category-specific rewards (cashback percentages)
+  # Specializes in security audits
+  rewards:
+    security_audit: 4.0         # 4% back on security audit → net -1.0% (BIG CASHBACK!)
+    architecture_review: 3.0    # 3% back on architecture → net 0% (FREE!)
+    code_review: 2.0            # 2% back on code review → net 1.0%
+    development: 1.0            # 1% back on development → net 2.0%
+    linting: 0.5                # 0.5% back on linting → net 2.5%
+    default: 1.0                # 1% back on other → net 2.0%
+
+  # Marketing copy
+  tagline: "Premium security payment processing - up to 1.0% cashback on security audits!"
+  best_for: "Security audits, architecture reviews, high-value transactions"
+
+skills:
+  - id: "payment_processing"
+    name: "Payment Processing"
+    description: "Process payments with premium rewards for security audit work"
+    tags: ["payment", "security", "audit", "architecture"]
+    examples:
+      - "Process payment for security audit"
+      - "Process payment for architecture review"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "PREFERRED"
+  trust_score: 0.92
+  pricing:
+    base_rate: 0.0
+    currency: "USD"

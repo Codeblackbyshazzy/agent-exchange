@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aex-work-publisher
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-work-publisher
+    app.kubernetes.io/component: work-publisher
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-work-publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aex-work-publisher
+        app.kubernetes.io/component: work-publisher
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: aex-work-publisher
+          image: ${REGISTRY}/aex-work-publisher:${TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: STORE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: STORE_TYPE
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: MONGO_URI
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_DB
+            - name: MONGO_COLLECTION_WORK
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_COLLECTION_WORK
+            - name: PROVIDER_REGISTRY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: PROVIDER_REGISTRY_URL
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: ENVIRONMENT
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

@@ -1,0 +1,59 @@
+agent:
+  name: "CodeGuard AI"
+  description: "Thorough code review with security focus - finds vulnerabilities and bugs"
+  version: "1.0.0"
+  provider:
+    organization: "CodeGuard Security"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8101
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.4
+  max_tokens: 4096
+
+# Agent characteristics for bidding
+characteristics:
+  tier: "standard"
+  response_style: "detailed"
+  detail_level: "thorough"
+  turnaround: "moderate"
+
+skills:
+  - id: "code_review"
+    name: "Code Review"
+    description: "Comprehensive code review with security analysis and bug detection"
+    tags: ["code", "review", "security"]
+    examples:
+      - "Review this code for security issues"
+      - "Find bugs and vulnerabilities"
+
+  - id: "security_audit"
+    name: "Security Audit"
+    description: "Detailed security vulnerability assessment with OWASP mapping"
+    tags: ["security", "audit", "vulnerability"]
+    examples:
+      - "Perform a security audit on this code"
+      - "Check for injection vulnerabilities"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "TRUSTED"
+  trust_score: 0.85
+  pricing:
+    base_rate: 10.00
+    per_page_rate: 3.00
+    max_pages_optimal: 15
+    currency: "USD"
+    description: "Best for security-sensitive code reviews (5-15 files)"
+  bidding:
+    confidence: 0.85
+    estimated_time_minutes: 5
+    max_document_pages: 30

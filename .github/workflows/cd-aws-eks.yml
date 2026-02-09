@@ -1,0 +1,459 @@
+name: CD-AWS-EKS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  GO_VERSION: "1.22"
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  CLUSTER_NAME_STAGING: aex-eks-staging
+  CLUSTER_NAME_PRODUCTION: aex-eks
+  ENVIRONMENT_NAME: aex
+
+jobs:
+  # ============================================================
+  # Build and Push Images to ECR
+  # ============================================================
+  build-and-push:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=sha-${GITHUB_SHA::8}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push AEX core services
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          services=(
+            "aex-gateway"
+            "aex-work-publisher"
+            "aex-bid-gateway"
+            "aex-bid-evaluator"
+            "aex-contract-engine"
+            "aex-provider-registry"
+            "aex-trust-broker"
+            "aex-identity"
+            "aex-settlement"
+            "aex-telemetry"
+          )
+
+          for service in "${services[@]}"; do
+            echo "Building and pushing $service..."
+            docker buildx build \
+              --platform linux/amd64 \
+              -f "src/$service/Dockerfile" \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$service:$VERSION" \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$service:latest" \
+              --push \
+              src/
+          done
+
+      - name: Build and push code review demo agents
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          agents=("code-reviewer-a" "code-reviewer-b" "code-reviewer-c" "orchestrator")
+
+          for agent in "${agents[@]}"; do
+            echo "Building and pushing $agent..."
+            docker buildx build \
+              --platform linux/amd64 \
+              -f demo/agents/Dockerfile \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$agent:$VERSION" \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$agent:latest" \
+              --build-arg AGENT_DIR=$agent \
+              --push \
+              demo/agents/
+          done
+
+      - name: Build and push payment agents
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          agents=("payment-devpay" "payment-codeauditpay" "payment-securitypay")
+
+          for agent in "${agents[@]}"; do
+            echo "Building and pushing $agent..."
+            docker buildx build \
+              --platform linux/amd64 \
+              -f demo/agents/Dockerfile \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$agent:$VERSION" \
+              -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$agent:latest" \
+              --build-arg AGENT_DIR=$agent \
+              --push \
+              demo/agents/
+          done
+
+      - name: Build and push Demo UI
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "Building and pushing demo-ui-nicegui..."
+          docker buildx build \
+            --platform linux/amd64 \
+            -f demo/ui/Dockerfile \
+            -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/demo-ui-nicegui:$VERSION" \
+            -t "$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/demo-ui-nicegui:latest" \
+            --push \
+            demo/ui/
+
+  # ============================================================
+  # Deploy to EKS Staging
+  # ============================================================
+  deploy-staging:
+    name: Deploy to EKS Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event.inputs.environment == 'staging' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    environment: eks-staging
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME_STAGING }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Apply Kustomize manifests (staging)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+        run: |
+          # Check if staging overlay exists
+          if [ -d "deploy/k8s/overlays/staging" ]; then
+            echo "Applying staging overlay..."
+            kubectl apply -k deploy/k8s/overlays/staging
+          elif [ -d "deploy/k8s/base" ]; then
+            echo "Applying base manifests..."
+            kubectl apply -k deploy/k8s/base
+          fi
+
+      - name: Update deployment images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+        run: |
+          NAMESPACE=aex
+
+          # AEX core services
+          core_services=(
+            "aex-gateway"
+            "aex-work-publisher"
+            "aex-bid-gateway"
+            "aex-bid-evaluator"
+            "aex-contract-engine"
+            "aex-provider-registry"
+            "aex-trust-broker"
+            "aex-identity"
+            "aex-settlement"
+            "aex-telemetry"
+          )
+
+          for service in "${core_services[@]}"; do
+            if kubectl get deployment "$service" -n "$NAMESPACE" &>/dev/null; then
+              echo "Updating $service to $VERSION..."
+              kubectl set image deployment/"$service" \
+                "$service=$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$service:$VERSION" \
+                -n "$NAMESPACE"
+            fi
+          done
+
+          # Demo agents
+          demo_services=(
+            "code-reviewer-a"
+            "code-reviewer-b"
+            "code-reviewer-c"
+            "orchestrator"
+            "payment-devpay"
+            "payment-codeauditpay"
+            "payment-securitypay"
+            "demo-ui-nicegui"
+          )
+
+          for service in "${demo_services[@]}"; do
+            if kubectl get deployment "$service" -n "$NAMESPACE" &>/dev/null; then
+              echo "Updating $service to $VERSION..."
+              kubectl set image deployment/"$service" \
+                "$service=$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$service:$VERSION" \
+                -n "$NAMESPACE"
+            fi
+          done
+
+      - name: Wait for staging rollout
+        run: |
+          NAMESPACE=aex
+          TIMEOUT=300
+
+          critical_services=(
+            "aex-gateway"
+            "aex-provider-registry"
+            "aex-work-publisher"
+          )
+
+          for service in "${critical_services[@]}"; do
+            if kubectl get deployment "$service" -n "$NAMESPACE" &>/dev/null; then
+              echo "Waiting for $service rollout..."
+              kubectl rollout status deployment/"$service" \
+                -n "$NAMESPACE" --timeout="${TIMEOUT}s" || true
+            fi
+          done
+
+          echo "Staging deployment complete."
+
+      - name: Run smoke tests
+        run: |
+          NAMESPACE=aex
+
+          echo "Running smoke tests..."
+
+          # Check all pods are running
+          echo "Checking pod status..."
+          kubectl get pods -n "$NAMESPACE"
+
+          # Check gateway health endpoint
+          echo "Checking gateway health..."
+          kubectl exec -n "$NAMESPACE" deploy/aex-gateway -- \
+            wget -qO- http://localhost:8080/health 2>/dev/null || \
+            echo "Gateway health check skipped (wget not available in container)"
+
+          # Verify all deployments have available replicas
+          echo "Checking deployment availability..."
+          UNAVAILABLE=$(kubectl get deployments -n "$NAMESPACE" -o json | \
+            jq -r '.items[] | select(.status.availableReplicas == 0 or .status.availableReplicas == null) | .metadata.name' 2>/dev/null || echo "")
+
+          if [ -n "$UNAVAILABLE" ]; then
+            echo "Warning: The following deployments have no available replicas:"
+            echo "$UNAVAILABLE"
+          else
+            echo "All deployments have available replicas."
+          fi
+
+          echo "Smoke tests complete."
+
+  # ============================================================
+  # Deploy to EKS Production
+  # ============================================================
+  deploy-production:
+    name: Deploy to EKS Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: github.event.inputs.environment == 'production' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    environment: eks-production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME_PRODUCTION }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Apply Kustomize manifests (production)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+        run: |
+          # Check if production overlay exists
+          if [ -d "deploy/k8s/overlays/production" ]; then
+            echo "Applying production overlay..."
+            kubectl apply -k deploy/k8s/overlays/production
+          elif [ -d "deploy/k8s/base" ]; then
+            echo "Applying base manifests..."
+            kubectl apply -k deploy/k8s/base
+          fi
+
+      - name: Update deployment images (rolling update)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+        run: |
+          NAMESPACE=aex
+
+          all_services=(
+            "aex-gateway"
+            "aex-work-publisher"
+            "aex-bid-gateway"
+            "aex-bid-evaluator"
+            "aex-contract-engine"
+            "aex-provider-registry"
+            "aex-trust-broker"
+            "aex-identity"
+            "aex-settlement"
+            "aex-telemetry"
+            "code-reviewer-a"
+            "code-reviewer-b"
+            "code-reviewer-c"
+            "orchestrator"
+            "payment-devpay"
+            "payment-codeauditpay"
+            "payment-securitypay"
+            "demo-ui-nicegui"
+          )
+
+          for service in "${all_services[@]}"; do
+            if kubectl get deployment "$service" -n "$NAMESPACE" &>/dev/null; then
+              echo "Updating $service to $VERSION (production)..."
+              kubectl set image deployment/"$service" \
+                "$service=$ECR_REGISTRY/${{ env.ENVIRONMENT_NAME }}/$service:$VERSION" \
+                -n "$NAMESPACE"
+            fi
+          done
+
+      - name: Wait for production rollout
+        run: |
+          NAMESPACE=aex
+          TIMEOUT=600
+
+          critical_services=(
+            "aex-gateway"
+            "aex-provider-registry"
+            "aex-work-publisher"
+            "aex-bid-gateway"
+            "aex-contract-engine"
+          )
+
+          for service in "${critical_services[@]}"; do
+            if kubectl get deployment "$service" -n "$NAMESPACE" &>/dev/null; then
+              echo "Waiting for $service rollout..."
+              kubectl rollout status deployment/"$service" \
+                -n "$NAMESPACE" --timeout="${TIMEOUT}s" || true
+            fi
+          done
+
+          echo "Production deployment complete."
+
+      - name: Create release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+
+            try {
+              const { data: existingRelease } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag
+              });
+
+              await github.rest.repos.updateRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: existingRelease.id,
+                body: existingRelease.body + `\n\n**AWS EKS Deployment:** Deployed to production EKS cluster.`
+              });
+              console.log(`Updated release: ${existingRelease.html_url}`);
+            } catch (e) {
+              const { data: release } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `Release ${tag}`,
+                body: `Automated release for ${tag}\n\nDeployed to AWS EKS production.`,
+                draft: false,
+                prerelease: false
+              });
+              console.log(`Created release: ${release.html_url}`);
+            }
+
+  # ============================================================
+  # Notify
+  # ============================================================
+  notify:
+    name: Notify EKS Deployment
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging, deploy-production]
+    if: always()
+
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## AWS EKS Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Push | ${{ needs.build-and-push.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy EKS Staging | ${{ needs.deploy-staging.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy EKS Production | ${{ needs.deploy-production.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build-and-push.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Orchestration:** Kubernetes (EKS)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aex-config
+  namespace: aex
+  labels:
+    app.kubernetes.io/part-of: agent-exchange
+    app.kubernetes.io/component: config
+data:
+  # --- Environment ---
+  ENVIRONMENT: "development"
+  MONGO_DB: "aex"
+  STORE_TYPE: "mongo"
+  MONGO_COLLECTION_WORK: "work_specs"
+  AP2_ENABLED: "true"
+
+  # --- AEX Core Service URLs (K8s DNS) ---
+  # All Go microservices listen on port 8080 internally
+  GATEWAY_URL: "http://aex-gateway.aex.svc.cluster.local:8080"
+  IDENTITY_URL: "http://aex-identity.aex.svc.cluster.local:8080"
+  BID_GATEWAY_URL: "http://aex-bid-gateway.aex.svc.cluster.local:8080"
+  PROVIDER_REGISTRY_URL: "http://aex-provider-registry.aex.svc.cluster.local:8080"
+  CONTRACT_ENGINE_URL: "http://aex-contract-engine.aex.svc.cluster.local:8080"
+  TRUST_BROKER_URL: "http://aex-trust-broker.aex.svc.cluster.local:8080"
+  SETTLEMENT_URL: "http://aex-settlement.aex.svc.cluster.local:8080"
+  TELEMETRY_URL: "http://aex-telemetry.aex.svc.cluster.local:8080"
+  CREDENTIALS_PROVIDER_URL: "http://aex-credentials-provider.aex.svc.cluster.local:8080"
+  WORK_PUBLISHER_URL: "http://aex-work-publisher.aex.svc.cluster.local:8080"
+
+  # --- Agent / Demo URLs ---
+  AEX_GATEWAY_URL: "http://aex-gateway.aex.svc.cluster.local:8080"
+  AEX_SETTLEMENT_URL: "http://aex-settlement.aex.svc.cluster.local:8080"
+  AEX_PROVIDER_REGISTRY_URL: "http://aex-provider-registry.aex.svc.cluster.local:8080"
+  CONFIG_PATH: "config.yaml"
+
+  # --- Code Review Agent URLs ---
+  CODE_REVIEWER_A_URL: "http://code-reviewer-a.aex.svc.cluster.local:8100"
+  CODE_REVIEWER_B_URL: "http://code-reviewer-b.aex.svc.cluster.local:8101"
+  CODE_REVIEWER_C_URL: "http://code-reviewer-c.aex.svc.cluster.local:8102"
+  ORCHESTRATOR_URL: "http://orchestrator.aex.svc.cluster.local:8103"
+
+  # --- Payment Agent URLs ---
+  DEVPAY_URL: "http://payment-devpay.aex.svc.cluster.local:8200"
+  CODEAUDITPAY_URL: "http://payment-codeauditpay.aex.svc.cluster.local:8201"
+  SECURITYPAY_URL: "http://payment-securitypay.aex.svc.cluster.local:8202"

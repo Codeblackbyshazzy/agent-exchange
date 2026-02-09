@@ -1,0 +1,59 @@
+agent:
+  name: "ArchitectAI"
+  description: "Deep architectural review with design pattern analysis and refactoring suggestions"
+  version: "1.0.0"
+  provider:
+    organization: "ArchitectAI Labs"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8102
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.5
+  max_tokens: 8192
+
+# Agent characteristics for bidding
+characteristics:
+  tier: "premium"
+  response_style: "exhaustive"
+  detail_level: "expert"
+  turnaround: "thorough"
+
+skills:
+  - id: "code_review"
+    name: "Code Review"
+    description: "Expert-level code review with architecture assessment and design pattern analysis"
+    tags: ["code", "review", "architecture"]
+    examples:
+      - "Provide a deep code review with architecture assessment"
+      - "Analyze code quality, patterns, and refactoring opportunities"
+
+  - id: "architecture_review"
+    name: "Architecture Review"
+    description: "Comprehensive architecture evaluation with scalability analysis and evolution roadmap"
+    tags: ["architecture", "patterns", "refactoring"]
+    examples:
+      - "Review the system architecture and suggest improvements"
+      - "Analyze design patterns and provide refactoring roadmap"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: true
+  auto_bid: true
+  trust_tier: "PREFERRED"
+  trust_score: 0.95
+  pricing:
+    base_rate: 25.00
+    per_page_rate: 5.00
+    max_pages_optimal: 30
+    currency: "USD"
+    description: "Best for comprehensive architecture reviews and large codebases (10-30+ files)"
+  bidding:
+    confidence: 0.95
+    estimated_time_minutes: 10
+    max_document_pages: 50

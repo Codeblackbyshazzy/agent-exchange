@@ -1,0 +1,146 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Dev overlay: 1 replica, small resources, local images (Kind)
+# Usage: kubectl apply -k deploy/k8s/overlays/dev/
+
+namespace: aex
+
+resources:
+  - ../../base
+
+# Override images for local development (Kind cluster)
+images:
+  # AEX Core Services
+  - name: ${REGISTRY}/aex-gateway
+    newName: aex/aex-gateway
+    newTag: local
+  - name: ${REGISTRY}/aex-work-publisher
+    newName: aex/aex-work-publisher
+    newTag: local
+  - name: ${REGISTRY}/aex-bid-gateway
+    newName: aex/aex-bid-gateway
+    newTag: local
+  - name: ${REGISTRY}/aex-bid-evaluator
+    newName: aex/aex-bid-evaluator
+    newTag: local
+  - name: ${REGISTRY}/aex-contract-engine
+    newName: aex/aex-contract-engine
+    newTag: local
+  - name: ${REGISTRY}/aex-provider-registry
+    newName: aex/aex-provider-registry
+    newTag: local
+  - name: ${REGISTRY}/aex-trust-broker
+    newName: aex/aex-trust-broker
+    newTag: local
+  - name: ${REGISTRY}/aex-identity
+    newName: aex/aex-identity
+    newTag: local
+  - name: ${REGISTRY}/aex-settlement
+    newName: aex/aex-settlement
+    newTag: local
+  - name: ${REGISTRY}/aex-telemetry
+    newName: aex/aex-telemetry
+    newTag: local
+  - name: ${REGISTRY}/aex-credentials-provider
+    newName: aex/aex-credentials-provider
+    newTag: local
+  # Demo Agents
+  - name: ${REGISTRY}/code-review-code-reviewer-a
+    newName: aex/code-reviewer-a
+    newTag: local
+  - name: ${REGISTRY}/code-review-code-reviewer-b
+    newName: aex/code-reviewer-b
+    newTag: local
+  - name: ${REGISTRY}/code-review-code-reviewer-c
+    newName: aex/code-reviewer-c
+    newTag: local
+  - name: ${REGISTRY}/code-review-orchestrator
+    newName: aex/orchestrator
+    newTag: local
+  - name: ${REGISTRY}/code-review-payment-devpay
+    newName: aex/payment-devpay
+    newTag: local
+  - name: ${REGISTRY}/code-review-payment-codeauditpay
+    newName: aex/payment-codeauditpay
+    newTag: local
+  - name: ${REGISTRY}/code-review-payment-securitypay
+    newName: aex/payment-securitypay
+    newTag: local
+  # UI
+  - name: ${REGISTRY}/code-review-demo-ui-nicegui
+    newName: aex/demo-ui-nicegui
+    newTag: local
+
+patches:
+  # --- Dev ConfigMap overrides ---
+  - target:
+      kind: ConfigMap
+      name: aex-config
+    patch: |
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: "development"
+
+  # --- Dev: Use NodePort for UI instead of LoadBalancer ---
+  - target:
+      kind: Service
+      name: demo-ui-nicegui
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30502
+
+  # --- Dev: NodePort for gateway ---
+  - target:
+      kind: Service
+      name: aex-gateway
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080
+
+  # --- Dev: Smaller MongoDB PVC ---
+  - target:
+      kind: StatefulSet
+      name: mongodb
+    patch: |
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+        value: "1Gi"
+
+  # --- Dev: imagePullPolicy Never for Kind ---
+  - target:
+      kind: Deployment
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: unused
+      spec:
+        template:
+          spec:
+            containers:
+              - name: "*"
+                imagePullPolicy: Never
+
+  - target:
+      kind: StatefulSet
+      name: mongodb
+    patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: mongodb
+      spec:
+        template:
+          spec:
+            containers:
+              - name: mongodb
+                imagePullPolicy: IfNotPresent

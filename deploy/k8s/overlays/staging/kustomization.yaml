@@ -1,0 +1,218 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Staging overlay: 2 replicas, moderate resources, ECR images
+# Usage: kubectl apply -k deploy/k8s/overlays/staging/
+
+namespace: aex
+
+resources:
+  - ../../base
+
+# Override images for staging (ECR or your container registry)
+images:
+  # AEX Core Services
+  - name: ${REGISTRY}/aex-gateway
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-gateway
+    newTag: staging
+  - name: ${REGISTRY}/aex-work-publisher
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-work-publisher
+    newTag: staging
+  - name: ${REGISTRY}/aex-bid-gateway
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-bid-gateway
+    newTag: staging
+  - name: ${REGISTRY}/aex-bid-evaluator
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-bid-evaluator
+    newTag: staging
+  - name: ${REGISTRY}/aex-contract-engine
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-contract-engine
+    newTag: staging
+  - name: ${REGISTRY}/aex-provider-registry
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-provider-registry
+    newTag: staging
+  - name: ${REGISTRY}/aex-trust-broker
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-trust-broker
+    newTag: staging
+  - name: ${REGISTRY}/aex-identity
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-identity
+    newTag: staging
+  - name: ${REGISTRY}/aex-settlement
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-settlement
+    newTag: staging
+  - name: ${REGISTRY}/aex-telemetry
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-telemetry
+    newTag: staging
+  - name: ${REGISTRY}/aex-credentials-provider
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/aex-credentials-provider
+    newTag: staging
+  # Demo Agents
+  - name: ${REGISTRY}/code-review-code-reviewer-a
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-code-reviewer-a
+    newTag: staging
+  - name: ${REGISTRY}/code-review-code-reviewer-b
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-code-reviewer-b
+    newTag: staging
+  - name: ${REGISTRY}/code-review-code-reviewer-c
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-code-reviewer-c
+    newTag: staging
+  - name: ${REGISTRY}/code-review-orchestrator
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-orchestrator
+    newTag: staging
+  - name: ${REGISTRY}/code-review-payment-devpay
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-payment-devpay
+    newTag: staging
+  - name: ${REGISTRY}/code-review-payment-codeauditpay
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-payment-codeauditpay
+    newTag: staging
+  - name: ${REGISTRY}/code-review-payment-securitypay
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-payment-securitypay
+    newTag: staging
+  # UI
+  - name: ${REGISTRY}/code-review-demo-ui-nicegui
+    newName: YOUR_ACCOUNT.dkr.ecr.YOUR_REGION.amazonaws.com/code-review-demo-ui-nicegui
+    newTag: staging
+
+patches:
+  # --- Staging ConfigMap overrides ---
+  - target:
+      kind: ConfigMap
+      name: aex-config
+    patch: |
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: "staging"
+
+  # --- Staging: 2 replicas for core services ---
+  - target:
+      kind: Deployment
+      name: aex-gateway
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-work-publisher
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-bid-gateway
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-bid-evaluator
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-contract-engine
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-provider-registry
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-trust-broker
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-identity
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-settlement
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: Deployment
+      name: aex-credentials-provider
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  # --- Staging: Moderate resources for AEX services ---
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component in (gateway,work-publisher,bid-gateway,bid-evaluator,contract-engine,provider-registry,trust-broker,identity,settlement,telemetry,credentials-provider)
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "512Mi"
+
+  # --- Staging: Moderate resources for agents ---
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component in (code-review-agent,orchestrator,payment-agent,ui)
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "300m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "750m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+
+  # --- Staging: Larger MongoDB PVC ---
+  - target:
+      kind: StatefulSet
+      name: mongodb
+    patch: |
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+        value: "5Gi"
+
+  # --- Staging: Larger MongoDB resources ---
+  - target:
+      kind: StatefulSet
+      name: mongodb
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"

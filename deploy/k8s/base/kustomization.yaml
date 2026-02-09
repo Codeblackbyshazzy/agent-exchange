@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aex
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+
+  # --- MongoDB ---
+  - ../services/mongodb/statefulset.yaml
+  - ../services/mongodb/service.yaml
+
+  # --- AEX Core Services ---
+  - ../services/aex-gateway/deployment.yaml
+  - ../services/aex-gateway/service.yaml
+  - ../services/aex-work-publisher/deployment.yaml
+  - ../services/aex-work-publisher/service.yaml
+  - ../services/aex-bid-gateway/deployment.yaml
+  - ../services/aex-bid-gateway/service.yaml
+  - ../services/aex-bid-evaluator/deployment.yaml
+  - ../services/aex-bid-evaluator/service.yaml
+  - ../services/aex-contract-engine/deployment.yaml
+  - ../services/aex-contract-engine/service.yaml
+  - ../services/aex-provider-registry/deployment.yaml
+  - ../services/aex-provider-registry/service.yaml
+  - ../services/aex-trust-broker/deployment.yaml
+  - ../services/aex-trust-broker/service.yaml
+  - ../services/aex-identity/deployment.yaml
+  - ../services/aex-identity/service.yaml
+  - ../services/aex-settlement/deployment.yaml
+  - ../services/aex-settlement/service.yaml
+  - ../services/aex-telemetry/deployment.yaml
+  - ../services/aex-telemetry/service.yaml
+  - ../services/aex-credentials-provider/deployment.yaml
+  - ../services/aex-credentials-provider/service.yaml
+
+  # --- Code Review Demo Agents ---
+  - ../agents/code-reviewer-a/deployment.yaml
+  - ../agents/code-reviewer-a/service.yaml
+  - ../agents/code-reviewer-b/deployment.yaml
+  - ../agents/code-reviewer-b/service.yaml
+  - ../agents/code-reviewer-c/deployment.yaml
+  - ../agents/code-reviewer-c/service.yaml
+  - ../agents/orchestrator/deployment.yaml
+  - ../agents/orchestrator/service.yaml
+  - ../agents/payment-devpay/deployment.yaml
+  - ../agents/payment-devpay/service.yaml
+  - ../agents/payment-codeauditpay/deployment.yaml
+  - ../agents/payment-codeauditpay/service.yaml
+  - ../agents/payment-securitypay/deployment.yaml
+  - ../agents/payment-securitypay/service.yaml
+
+  # --- Demo UI ---
+  - ../ui/deployment.yaml
+  - ../ui/service.yaml
+
+  # --- Ingress ---
+  - ../ingress/ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: agent-exchange

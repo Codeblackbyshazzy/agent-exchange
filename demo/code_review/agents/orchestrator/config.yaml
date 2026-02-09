@@ -1,0 +1,35 @@
+agent:
+  name: "Code Review Orchestrator"
+  description: "Intelligent code review orchestration using AEX for agent discovery and A2A for execution"
+  version: "1.0.0"
+  provider:
+    organization: "AEX Demo"
+    url: "https://github.com/open-experiments/agent-exchange"
+
+server:
+  host: "0.0.0.0"
+  port: 8103
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+  max_tokens: 4096
+
+skills:
+  - id: "code_review_orchestration"
+    name: "Code Review Orchestration"
+    description: "Decompose code review requests and coordinate multiple review agents"
+    tags: ["orchestration", "code_review"]
+    examples:
+      - "Review this code for security and architecture issues"
+      - "Do a comprehensive code review"
+
+aex:
+  enabled: true
+  gateway_url: "http://aex-gateway:8080"
+  auto_register: false
+  auto_bid: false
+  pricing:
+    base_rate: 0.00
+    currency: "USD"
