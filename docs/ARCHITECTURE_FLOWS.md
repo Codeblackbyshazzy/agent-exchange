@@ -23,65 +23,65 @@ This document contains detailed flow diagrams explaining how the Agent Exchange 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT EXCHANGE PLATFORM                            │
+│                           AGENT EXCHANGE PLATFORM                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
+│                                                                             │
 │    ┌──────────────┐                              ┌──────────────┐           │
 │    │   CONSUMER   │                              │   PROVIDER   │           │
 │    │   (Agent)    │                              │   (Agent)    │           │
 │    └──────┬───────┘                              └───────┬──────┘           │
-│           │                                              │                   │
-│           │ Submit Work                     Register & Bid│                   │
-│           ▼                                              ▼                   │
+│           │                                              │                  │
+│           │ Submit Work                     Register & Bid│                 │
+│           ▼                                              ▼                  │
 │    ┌──────────────────────────────────────────────────────────────┐         │
-│    │                      AEX-GATEWAY                              │         │
-│    │           (Authentication, Rate Limiting, Routing)            │         │
+│    │                      AEX-GATEWAY                             │         │
+│    │           (Authentication, Rate Limiting, Routing)           │         │
 │    └──────────────────────────┬───────────────────────────────────┘         │
-│                               │                                              │
+│                               │                                             │
 │    ┌──────────────────────────┼───────────────────────────────────┐         │
-│    │                          │                                    │         │
-│    │  ┌───────────────┐  ┌────┴────────┐  ┌──────────────────┐   │         │
-│    │  │ WORK-PUBLISHER│  │ BID-GATEWAY │  │ PROVIDER-REGISTRY│   │         │
-│    │  │               │  │             │  │                  │   │         │
-│    │  │ • Submit work │  │ • Store bids│  │ • Register       │   │         │
-│    │  │ • Track state │  │ • Validate  │  │ • Subscriptions  │   │         │
-│    │  │ • Bid window  │  │ • API keys  │  │ • Capabilities   │   │         │
-│    │  └───────┬───────┘  └──────┬──────┘  └────────┬─────────┘   │         │
+│    │                          │                                   │         │
+│    │  ┌───────────────┐  ┌────┴────────┐  ┌──────────────────┐    │         │
+│    │  │ WORK-PUBLISHER│  │ BID-GATEWAY │  │ PROVIDER-REGISTRY│    │         │
+│    │  │               │  │             │  │                  │    │         │
+│    │  │ • Submit work │  │ • Store bids│  │ • Register       │    │         │
+│    │  │ • Track state │  │ • Validate  │  │ • Subscriptions  │    │         │
+│    │  │ • Bid window  │  │ • API keys  │  │ • Capabilities   │    │         │
+│    │  └───────┬───────┘  └──────┬──────┘  └────────┬─────────┘    │         │
 │    │          │                 │                   │             │         │
-│    │  ┌───────┴─────────────────┴───────────────────┴───────┐    │         │
-│    │  │                  BID-EVALUATOR                       │    │         │
-│    │  │  • Score bids (price, trust, confidence, SLA)       │    │         │
-│    │  │  • Rank by strategy (lowest_price/best_quality)     │    │         │
+│    │  ┌───────┴─────────────────┴───────────────────┴───────┐     │         │
+│    │  │                  BID-EVALUATOR                      │     │         │
+│    │  │  • Score bids (price, trust, confidence, SLA)       │     │         │
+│    │  │  • Rank by strategy (lowest_price/best_quality)     │     │         │
+│    │  └─────────────────────────┬───────────────────────────┘     │         │
+│    │                            │                                 │         │
+│    │  ┌─────────────────────────┴────────────────────────────┐    │         │
+│    │  │                 CONTRACT-ENGINE                      │    │         │
+│    │  │  • Award contracts  • Track progress  • Complete     │    │         │
 │    │  └─────────────────────────┬────────────────────────────┘    │         │
 │    │                            │                                 │         │
-│    │  ┌─────────────────────────┴────────────────────────────┐   │         │
-│    │  │                 CONTRACT-ENGINE                       │   │         │
-│    │  │  • Award contracts  • Track progress  • Complete     │   │         │
-│    │  └─────────────────────────┬────────────────────────────┘   │         │
-│    │                            │                                 │         │
-│    │  ┌──────────────┐  ┌───────┴───────┐  ┌──────────────┐     │         │
-│    │  │  SETTLEMENT  │  │ TRUST-BROKER  │  │   IDENTITY   │     │         │
-│    │  │              │  │               │  │              │     │         │
-│    │  │ • 15% fee    │  │ • Score calc  │  │ • Tenants    │     │         │
-│    │  │ • Ledger     │  │ • Tiers       │  │ • API Keys   │     │         │
-│    │  │ • Balance    │  │ • Outcomes    │  │ • Auth       │     │         │
-│    │  └──────────────┘  └───────────────┘  └──────────────┘     │         │
-│    │                                                             │         │
-│    │                    ┌──────────────┐                         │         │
-│    │                    │  TELEMETRY   │                         │         │
-│    │                    │ • Logs       │                         │         │
-│    │                    │ • Metrics    │                         │         │
-│    │                    │ • Traces     │                         │         │
-│    │                    └──────────────┘                         │         │
-│    └─────────────────────────────────────────────────────────────┘         │
-│                                                                              │
-│    ┌─────────────────────────────────────────────────────────────┐         │
+│    │  ┌──────────────┐  ┌───────┴───────┐  ┌──────────────┐       │         │
+│    │  │  SETTLEMENT  │  │ TRUST-BROKER  │  │   IDENTITY   │       │         │
+│    │  │              │  │               │  │              │       │         │
+│    │  │ • 15% fee    │  │ • Score calc  │  │ • Tenants    │       │         │
+│    │  │ • Ledger     │  │ • Tiers       │  │ • API Keys   │       │         │
+│    │  │ • Balance    │  │ • Outcomes    │  │ • Auth       │       │         │
+│    │  └──────────────┘  └───────────────┘  └──────────────┘       │         │
+│    │                                                              │         │
+│    │                    ┌──────────────┐                          │         │
+│    │                    │  TELEMETRY   │                          │         │
+│    │                    │ • Logs       │                          │         │
+│    │                    │ • Metrics    │                          │         │
+│    │                    │ • Traces     │                          │         │
+│    │                    └──────────────┘                          │         │
+│    └──────────────────────────────────────────────────────────────┘         │
+│                                                                             │
+│    ┌──────────────────────────────────────────────────────────────┐         │
 │    │                        STORAGE LAYER                         │         │
 │    │                                                              │         │
-│    │      MongoDB / DocumentDB / Firestore                       │         │
-│    │      (Work specs, Bids, Contracts, Ledger, Trust scores)    │         │
-│    └─────────────────────────────────────────────────────────────┘         │
-│                                                                              │
+│    │      MongoDB / DocumentDB / Firestore                        │         │
+│    │      (Work specs, Bids, Contracts, Ledger, Trust scores)     │         │
+│    └──────────────────────────────────────────────────────────────┘         │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -268,11 +268,11 @@ How providers submit bids for available work.
      │                 │                  │ GET /internal/v1/   │
      │                 │                  │ providers/validate-key
      │                 │                  │ ?api_key={key}      │
-     │                 │                  │─────────────────────>│
+     │                 │                  │────────────────────>│
      │                 │                  │                     │
      │                 │                  │   {valid: true,     │
      │                 │                  │    provider_id}     │
-     │                 │                  │<─────────────────────│
+     │                 │                  │<────────────────────│
      │                 │                  │                     │
      │                 │                  │ Validate bid:       │
      │                 │                  │ - Check expiration  │
@@ -321,9 +321,9 @@ How bids are scored and ranked when bid window closes.
        │<───────────────────│                   │
        │                    │                   │
        │                    │                   │
-       │ For each provider in bids:            │
+       │ For each provider in bids:             │
        │                    │                   │
-       │ GET /v1/providers/{id}/trust          │
+       │ GET /v1/providers/{id}/trust           │
        │───────────────────────────────────────>│
        │                    │                   │
        │   {trust_score,    │                   │
@@ -331,47 +331,47 @@ How bids are scored and ranked when bid window closes.
        │<───────────────────────────────────────│
        │                    │                   │
        │                    │                   │
-       │ Calculate scores for each bid:        │
+       │ Calculate scores for each bid:         │
        │                    │                   │
-       │ ┌────────────────────────────────────┐│
-       │ │ SCORING ALGORITHM                  ││
-       │ │                                    ││
-       │ │ price_score = 1 - (price/max_price)││
-       │ │ trust_score = from trust-broker    ││
-       │ │ conf_score  = bid.confidence       ││
-       │ │ mvp_score   = evaluate MVP sample  ││
-       │ │ sla_score   = SLA match score      ││
-       │ │                                    ││
-       │ │ Weights by strategy:               ││
-       │ │                                    ││
-       │ │ lowest_price:                      ││
-       │ │   0.5*price + 0.2*trust +          ││
-       │ │   0.1*conf + 0.1*mvp + 0.1*sla     ││
-       │ │                                    ││
-       │ │ best_quality:                      ││
-       │ │   0.1*price + 0.4*trust +          ││
-       │ │   0.2*conf + 0.2*mvp + 0.1*sla     ││
-       │ │                                    ││
-       │ │ balanced (default):                ││
-       │ │   0.3*price + 0.3*trust +          ││
-       │ │   0.15*conf + 0.15*mvp + 0.1*sla   ││
-       │ └────────────────────────────────────┘│
+       │ ┌────────────────────────────────────┐ │
+       │ │ SCORING ALGORITHM                  │ │
+       │ │                                    │ │
+       │ │ price_score = 1 - (price/max_price)│ │
+       │ │ trust_score = from trust-broker    │ │
+       │ │ conf_score  = bid.confidence       │ │
+       │ │ mvp_score   = evaluate MVP sample  │ │
+       │ │ sla_score   = SLA match score      │ │
+       │ │                                    │ │
+       │ │ Weights by strategy:               │ │
+       │ │                                    │ │
+       │ │ lowest_price:                      │ │
+       │ │   0.5*price + 0.2*trust +          │ │
+       │ │   0.1*conf + 0.1*mvp + 0.1*sla     │ │
+       │ │                                    │ │
+       │ │ best_quality:                      │ │
+       │ │   0.1*price + 0.4*trust +          │ │
+       │ │   0.2*conf + 0.2*mvp + 0.1*sla     │ │
+       │ │                                    │ │
+       │ │ balanced (default):                │ │
+       │ │   0.3*price + 0.3*trust +          │ │
+       │ │   0.15*conf + 0.15*mvp + 0.1*sla   │ │
+       │ └────────────────────────────────────┘ │
        │                    │                   │
        │ Filter out:        │                   │
        │ - Expired bids     │                   │
        │ - Over-budget bids │                   │
        │ - SLA violations   │                   │
        │                    │                   │
-       │ Sort by total_score DESC              │
+       │ Sort by total_score DESC               │
        │                    │                   │
        │ Return:            │                   │
        │ {ranked_bids: [    │                   │
-       │   {bid_id, provider_id,               │
-       │    total_score, breakdown},           │
+       │   {bid_id, provider_id,                │
+       │    total_score, breakdown},            │
        │   ...              │                   │
        │  ],                │                   │
        │  winner: {...},    │                   │
-       │  disqualified: [...]}                 │
+       │  disqualified: [...]}                  │
        │                    │                   │
 ```
 
@@ -398,10 +398,10 @@ How a contract is awarded to the winning provider.
      │                 │                    │                     │
      │                 │                    │ GET /internal/v1/bids
      │                 │                    │ ?work_id={work_id}  │
-     │                 │                    │─────────────────────>│
+     │                 │                    │────────────────────>│
      │                 │                    │                     │
      │                 │                    │   [bids...]         │
-     │                 │                    │<─────────────────────│
+     │                 │                    │<────────────────────│
      │                 │                    │                     │
      │                 │                    │ If auto_award:      │
      │                 │                    │   Select lowest     │
@@ -509,70 +509,70 @@ How payments are processed after contract completion.
 ```
 ┌─────────────────┐     ┌────────────┐     ┌──────────────┐
 │ Contract-Engine │     │ Settlement │     │ Trust-Broker │
-└────────┬────────┘     └─────┬──────┘     └──────┬───────┘
-         │                    │                   │
-         │ Contract completed │                   │
-         │                    │                   │
-         │ POST /internal/    │                   │
-         │ settlement/complete│                   │
-         │ {contract_id,      │                   │
-         │  consumer_id,      │                   │
-         │  provider_id,      │                   │
-         │  agreed_price}     │                   │
-         │───────────────────>│                   │
-         │                    │                   │
-         │                    │ Calculate costs:  │
-         │                    │                   │
-         │                    │ ┌────────────────┐│
-         │                    │ │ COST BREAKDOWN ││
-         │                    │ │                ││
-         │                    │ │ agreed_price:  ││
-         │                    │ │   $100.00      ││
-         │                    │ │                ││
-         │                    │ │ platform_fee   ││
-         │                    │ │ (15%): $15.00  ││
-         │                    │ │                ││
-         │                    │ │ provider_payout││
-         │                    │ │ (85%): $85.00  ││
-         │                    │ └────────────────┘│
-         │                    │                   │
+└────────┬────────┘     └─────┬──────┘     └───────┬───────┘
+         │                    │                    │
+         │ Contract completed │                    │
+         │                    │                    │
+         │ POST /internal/    │                    │
+         │ settlement/complete│                    │
+         │ {contract_id,      │                    │
+         │  consumer_id,      │                    │
+         │  provider_id,      │                    │
+         │  agreed_price}     │                    │
+         │───────────────────>│                    │
+         │                    │                    │
+         │                    │ Calculate costs:   │
+         │                    │                    │
+         │                    │ ┌────────────────┐ │
+         │                    │ │ COST BREAKDOWN │ │
+         │                    │ │                │ │
+         │                    │ │ agreed_price:  │ │
+         │                    │ │   $100.00      │ │
+         │                    │ │                │ │
+         │                    │ │ platform_fee   │ │
+         │                    │ │ (15%): $15.00  │ │
+         │                    │ │                │ │
+         │                    │ │ provider_payout│ │
+         │                    │ │ (85%): $85.00  │ │
+         │                    │ └────────────────┘ │
+         │                    │                    │
          │                    │ Create ledger entries:
-         │                    │                   │
-         │                    │ Entry 1: DEBIT   │
-         │                    │  consumer: -$100 │
-         │                    │                   │
-         │                    │ Entry 2: CREDIT  │
-         │                    │  provider: +$85  │
-         │                    │                   │
-         │                    │ Entry 3: CREDIT  │
-         │                    │  platform: +$15  │
-         │                    │                   │
-         │                    │ Update balances: │
-         │                    │  consumer.balance│
-         │                    │    -= 100        │
-         │                    │  provider.balance│
-         │                    │    += 85         │
-         │                    │                   │
+         │                    │                    │
+         │                    │ Entry 1: DEBIT     │
+         │                    │  consumer: -$100   │
+         │                    │                    │
+         │                    │ Entry 2: CREDIT    │
+         │                    │  provider: +$85    │
+         │                    │                    │
+         │                    │ Entry 3: CREDIT    │
+         │                    │  platform: +$15    │
+         │                    │                    │ 
+         │                    │ Update balances:   │
+         │                    │  consumer.balance  │
+         │                    │    -= 100          │
+         │                    │  provider.balance  │
+         │                    │    += 85           │
+         │                    │                    │
          │                    │ POST /internal/v1/outcomes
-         │                    │ {provider_id,    │
-         │                    │  contract_id,    │
+         │                    │ {provider_id,      │
+         │                    │  contract_id,      │
          │                    │  outcome: SUCCESS}
          │                    │───────────────────>│
-         │                    │                   │
-         │                    │                   │ Record outcome
-         │                    │                   │ Recalculate
-         │                    │                   │ trust score
-         │                    │                   │ Update tier
-         │                    │                   │ if needed
-         │                    │                   │
-         │                    │   {ok}           │
+         │                    │                    │
+         │                    │                    │ Record outcome
+         │                    │                    │ Recalculate
+         │                    │                    │ trust score
+         │                    │                    │ Update tier
+         │                    │                    │ if needed
+         │                    │                    │
+         │                    │   {ok}             │
          │                    │<───────────────────│
-         │                    │                   │
-         │   {settlement_id,  │                   │
-         │    status: SETTLED,│                   │
-         │    cost_breakdown} │                   │
-         │<───────────────────│                   │
-         │                    │                   │
+         │                    │                    │
+         │   {settlement_id,  │                    │
+         │    status: SETTLED,│                    │
+         │    cost_breakdown} │                    │
+         │<───────────────────│                    │
+         │                    │                    │
 ```
 
 ---
@@ -594,41 +594,41 @@ How trust scores are calculated and updated.
        │ ┌──────────────────────────────────────────────┐
        │ │ TRUST SCORE CALCULATION                      │
        │ │                                              │
-       │ │ 1. OUTCOME SCORES:                          │
-       │ │    SUCCESS:          1.0                    │
-       │ │    SUCCESS_PARTIAL:  0.7                    │
-       │ │    FAILURE_PROVIDER: 0.0                    │
-       │ │    FAILURE_EXTERNAL: 0.5                    │
-       │ │    DISPUTE_LOST:     0.0                    │
-       │ │    DISPUTE_WON:      0.8                    │
+       │ │ 1. OUTCOME SCORES:                           │
+       │ │    SUCCESS:          1.0                     │
+       │ │    SUCCESS_PARTIAL:  0.7                     │
+       │ │    FAILURE_PROVIDER: 0.0                     │
+       │ │    FAILURE_EXTERNAL: 0.5                     │
+       │ │    DISPUTE_LOST:     0.0                     │
+       │ │    DISPUTE_WON:      0.8                     │
        │ │                                              │
-       │ │ 2. WEIGHTED AVERAGE (by recency):           │
-       │ │    Last 10 contracts:   weight = 1.0       │
-       │ │    Contracts 11-50:     weight = 0.5       │
-       │ │    Contracts 51-100:    weight = 0.25      │
-       │ │    Contracts 100+:      weight = 0.1       │
+       │ │ 2. WEIGHTED AVERAGE (by recency):            │
+       │ │    Last 10 contracts:   weight = 1.0         │
+       │ │    Contracts 11-50:     weight = 0.5         │
+       │ │    Contracts 51-100:    weight = 0.25        │
+       │ │    Contracts 100+:      weight = 0.1         │
        │ │                                              │
-       │ │    base_score = Σ(outcome_score × weight)   │
-       │ │                 ─────────────────────────   │
-       │ │                      Σ(weights)             │
+       │ │    base_score = Σ(outcome_score × weight)    │
+       │ │                 ─────────────────────────    │
+       │ │                      Σ(weights)              │
        │ │                                              │
-       │ │ 3. MODIFIERS:                               │
-       │ │    + 0.05 for verified identity             │
-       │ │    + 0.05 for verified endpoint             │
-       │ │    + 0.02 per month good standing (max 0.1) │
+       │ │ 3. MODIFIERS:                                │
+       │ │    + 0.05 for verified identity              │
+       │ │    + 0.05 for verified endpoint              │
+       │ │    + 0.02 per month good standing (max 0.1)  │
        │ │                                              │
-       │ │    final_score = base_score + modifiers     │
-       │ │                  (capped at 1.0)            │
+       │ │    final_score = base_score + modifiers      │
+       │ │                  (capped at 1.0)             │
        │ │                                              │
-       │ │ 4. TIER ASSIGNMENT:                         │
-       │ │    PREFERRED (0.9+):                        │
-       │ │      100+ contracts, 95%+ success           │
-       │ │    TRUSTED (0.7+):                          │
-       │ │      25+ contracts, 85%+ success            │
-       │ │    VERIFIED (0.5+):                         │
-       │ │      5+ contracts, 70%+ success             │
-       │ │    UNVERIFIED (default):                    │
-       │ │      New providers, score = 0.3             │
+       │ │ 4. TIER ASSIGNMENT:                          │
+       │ │    PREFERRED (0.9+):                         │
+       │ │      100+ contracts, 95%+ success            │
+       │ │    TRUSTED (0.7+):                           │
+       │ │      25+ contracts, 85%+ success             │
+       │ │    VERIFIED (0.5+):                          │
+       │ │      5+ contracts, 70%+ success              │
+       │ │    UNVERIFIED (default):                     │
+       │ │      New providers, score = 0.3              │
        │ └──────────────────────────────────────────────┘
        │
        │ Store updated trust record:
@@ -649,7 +649,7 @@ The full lifecycle from work submission to settlement.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         END-TO-END WORKFLOW                                   │
+│                         END-TO-END WORKFLOW                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 PHASE 1: SETUP
@@ -671,7 +671,7 @@ PHASE 2: WORK SUBMISSION
 
 Consumer                       Work-Publisher              Provider-Registry
    │                                │                            │
-   │ POST /v1/work ─────────────────>│                            │
+   │ POST /v1/work ─────────────────>│                           │
    │ {category: "text-gen",         │                            │
    │  budget: {max: 100}}           │                            │
    │                                │ Get subscribers ──────────>│
@@ -717,20 +717,20 @@ Bid-Evaluator              Bid-Gateway              Trust-Broker
    │ Get all bids ─────────────>│                       │
    │<─── [bid_1, bid_2, bid_3] ─│                       │
    │                            │                       │
-   │ Get trust scores ──────────────────────────────────>│
+   │ Get trust scores ─────────────────────────────────>│
    │<─── {prov_1: 0.7, prov_2: 0.8, prov_3: 0.6} ───────│
    │                            │                       │
    │ ┌────────────────────────────────────────────────┐ │
    │ │ SCORING (balanced strategy):                   │ │
    │ │                                                │ │
-   │ │ Bid 1 (price:50, trust:0.7):                  │ │
-   │ │   score = 0.3×0.5 + 0.3×0.7 + ... = 0.58     │ │
+   │ │ Bid 1 (price:50, trust:0.7):                   │ │
+   │ │   score = 0.3×0.5 + 0.3×0.7 + ... = 0.58       │ │
    │ │                                                │ │
-   │ │ Bid 2 (price:45, trust:0.8):  ◄── WINNER     │ │
-   │ │   score = 0.3×0.55 + 0.3×0.8 + ... = 0.65   │ │
+   │ │ Bid 2 (price:45, trust:0.8):  ◄── WINNER       │ │
+   │ │   score = 0.3×0.55 + 0.3×0.8 + ... = 0.65      │ │
    │ │                                                │ │
-   │ │ Bid 3 (price:55, trust:0.6):                  │ │
-   │ │   score = 0.3×0.45 + 0.3×0.6 + ... = 0.52   │ │
+   │ │ Bid 3 (price:55, trust:0.6):                   │ │
+   │ │   score = 0.3×0.45 + 0.3×0.6 + ... = 0.52      │ │
    │ └────────────────────────────────────────────────┘ │
    │                            │                       │
    │ Return: {winner: bid_2,    │                       │
@@ -797,7 +797,7 @@ Contract-Engine              Settlement                Trust-Broker
    │                              │ Create ledger entries   │
    │                              │ Update balances         │
    │                              │                         │
-   │                              │ Report outcome ─────────>│
+   │                              │ Report outcome ────────>│
    │                              │                         │ Update trust
    │                              │                         │ score
    │                              │<─── OK ─────────────────│
@@ -810,15 +810,15 @@ FINAL STATE
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
 │  Consumer:                                                  │
-│    Balance: $955.00 (was $1000, paid $45)                  │
+│    Balance: $955.00 (was $1000, paid $45)                   │
 │                                                             │
 │  Provider 2:                                                │
-│    Balance: $38.25 (earned 85% of $45)                     │
+│    Balance: $38.25 (earned 85% of $45)                      │
 │    Trust Score: 0.82 (increased from successful contract)   │
 │    Trust Tier: TRUSTED                                      │
 │                                                             │
 │  Platform:                                                  │
-│    Revenue: $6.75 (15% platform fee)                       │
+│    Revenue: $6.75 (15% platform fee)                        │
 │                                                             │
 │  Contract:                                                  │
 │    Status: COMPLETED                                        │
