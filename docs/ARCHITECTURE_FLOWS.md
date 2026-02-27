@@ -507,8 +507,8 @@ How work is executed and progress is tracked.
 How payments are processed after contract completion.
 
 ```
-┌─────────────────┐     ┌────────────┐     ┌──────────────┐
-│ Contract-Engine │     │ Settlement │     │ Trust-Broker │
+┌─────────────────┐     ┌────────────┐     ┌───────────────┐
+│ Contract-Engine │     │ Settlement │     │ Trust-Broker  │
 └────────┬────────┘     └─────┬──────┘     └───────┬───────┘
          │                    │                    │
          │ Contract completed │                    │
