@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,12 +14,38 @@ import (
 	"github.com/parlakisik/agent-exchange/aex-identity/internal/httpapi"
 	"github.com/parlakisik/agent-exchange/aex-identity/internal/service"
 	"github.com/parlakisik/agent-exchange/aex-identity/internal/store"
+	"github.com/parlakisik/agent-exchange/internal/telemetry"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
 	cfg := config.Load()
+
+	// Setup structured logging with trace correlation
+	logHandler := telemetry.TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	logger := slog.New(logHandler)
+	slog.SetDefault(logger)
+
+	// Initialize OpenTelemetry tracing
+	otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
+	tracerShutdown, err := telemetry.InitTracer(context.Background(), "aex-identity", otlpEndpoint)
+	if err != nil {
+		log.Fatalf("failed to initialize tracer: %v", err)
+	}
+	defer func() {
+		if err := tracerShutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown tracer", "error", err)
+		}
+	}()
+
+	// Initialize Prometheus metrics
+	metricsHandler, err := telemetry.InitMeter("aex-identity")
+	if err != nil {
+		log.Fatalf("failed to initialize metrics: %v", err)
+	}
 
 	var st store.Store
 	var mongoClient *mongo.Client
@@ -42,9 +69,18 @@ func main() {
 	}
 
 	svc := service.New(st)
+
+	// Setup HTTP router with metrics endpoint
+	mux := http.NewServeMux()
+	mux.Handle("/", httpapi.NewRouter(svc))
+	mux.Handle("GET /metrics", metricsHandler)
+
+	// Wrap with OpenTelemetry tracing middleware
+	handler := telemetry.HTTPMiddleware("aex-identity")(mux)
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      httpapi.NewRouter(svc),
+		Handler:      handler,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,

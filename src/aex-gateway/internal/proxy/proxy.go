@@ -28,6 +28,10 @@ func NewRouter(cfg *config.Config) *Router {
 		"/v1/bids":          cfg.BidGatewayURL,
 		"/v1/contracts":     cfg.ContractEngineURL,
 		"/v1/tenants":       cfg.IdentityURL,
+		"/v1/certificates":  cfg.CertAuthURL,
+		"/v1/crl":           cfg.CertAuthURL,
+		"/v1/reputation":    cfg.CertAuthURL,
+		"/.well-known/aex-ca.json": cfg.CertAuthURL,
 	}
 
 	proxies := make(map[string]*httputil.ReverseProxy)

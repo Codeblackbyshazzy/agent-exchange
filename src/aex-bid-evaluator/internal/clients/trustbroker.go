@@ -2,51 +2,41 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/parlakisik/agent-exchange/internal/httpclient"
 )
 
 type TrustBrokerClient struct {
 	baseURL string
-	http    *http.Client
+	client  *httpclient.Client
 }
 
 func NewTrustBrokerClient(baseURL string) *TrustBrokerClient {
 	return &TrustBrokerClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 10 * time.Second},
+		client:  httpclient.NewClient("trust-broker", 10*time.Second),
 	}
 }
 
 func (c *TrustBrokerClient) GetScore(ctx context.Context, providerID string) (float64, error) {
 	if c.baseURL == "" {
-		return 0.5, nil
+		return 0, fmt.Errorf("trust-broker base URL is not configured")
 	}
-	u, err := url.Parse(c.baseURL + "/v1/providers/" + providerID + "/trust")
-	if err != nil {
-		return 0.5, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return 0.5, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return 0.5, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return 0.5, fmt.Errorf("trust-broker returned %d", resp.StatusCode)
-	}
+
 	var out struct {
 		TrustScore float64 `json:"trust_score"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return 0.5, err
+
+	err := httpclient.NewRequest("GET", c.baseURL).
+		Path("/v1/providers/" + providerID + "/trust").
+		Context(ctx).
+		ExecuteJSON(c.client, &out)
+	if err != nil {
+		return 0, fmt.Errorf("trust-broker request for provider %s: %w", providerID, err)
 	}
+
 	return out.TrustScore, nil
 }

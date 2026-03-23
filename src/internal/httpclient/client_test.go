@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -349,5 +350,76 @@ func TestDefaultRetryConfig(t *testing.T) {
 
 	if len(config.RetryableStatuses) == 0 {
 		t.Error("DefaultRetryConfig() RetryableStatuses is empty")
+	}
+}
+
+func TestDefaultCircuitBreakerConfig(t *testing.T) {
+	config := DefaultCircuitBreakerConfig()
+
+	if config.MaxConsecutiveFailures != 5 {
+		t.Errorf("DefaultCircuitBreakerConfig() MaxConsecutiveFailures = %v, want 5", config.MaxConsecutiveFailures)
+	}
+
+	if config.OpenDuration != 10*time.Second {
+		t.Errorf("DefaultCircuitBreakerConfig() OpenDuration = %v, want 10s", config.OpenDuration)
+	}
+}
+
+func TestNewClient_HasCircuitBreaker(t *testing.T) {
+	client := NewClient("test-service", 10*time.Second)
+
+	if client.breaker == nil {
+		t.Fatal("NewClient() did not initialize circuit breaker")
+	}
+}
+
+func TestCircuitBreaker_TripsAfterConsecutiveFailures(t *testing.T) {
+	// Server that always returns connection-refused-like errors by closing immediately
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	// Close the server immediately so all requests fail
+	server.Close()
+
+	// Use a circuit breaker that trips after 2 consecutive failures with short backoff
+	cbCfg := CircuitBreakerConfig{
+		MaxConsecutiveFailures: 2,
+		OpenDuration:           1 * time.Second,
+	}
+	retryCfg := RetryConfig{
+		MaxRetries:        0, // No retries to speed up the test
+		InitialBackoff:    1 * time.Millisecond,
+		MaxBackoff:        1 * time.Millisecond,
+		RetryableStatuses: []int{},
+	}
+	client := &Client{
+		httpClient:  &http.Client{Timeout: 1 * time.Second},
+		retryConfig: retryCfg,
+		serviceName: "test-cb",
+		breaker:     newBreaker("test-cb", cbCfg),
+	}
+
+	ctx := context.Background()
+
+	// First two requests should fail with connection errors (not circuit open)
+	for i := 0; i < 2; i++ {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+		_, err := client.Do(ctx, req)
+		if err == nil {
+			t.Fatalf("request %d: expected error, got nil", i+1)
+		}
+		if errors.Is(err, ErrCircuitOpen) {
+			t.Fatalf("request %d: circuit should not be open yet", i+1)
+		}
+	}
+
+	// Third request should fail with circuit open error
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	_, err := client.Do(ctx, req)
+	if err == nil {
+		t.Fatal("request 3: expected error, got nil")
+	}
+	if !errors.Is(err, ErrCircuitOpen) {
+		t.Errorf("request 3: expected ErrCircuitOpen, got: %v", err)
 	}
 }

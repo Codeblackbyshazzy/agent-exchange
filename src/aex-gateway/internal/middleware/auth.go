@@ -3,10 +3,13 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const TenantIDKey contextKey = "tenant_id"
@@ -23,7 +26,8 @@ type APIKeyInfo struct {
 	Status   string   `json:"status"`
 }
 
-// InMemoryAPIKeyValidator is a simple in-memory validator for development
+// InMemoryAPIKeyValidator is a simple in-memory validator.
+// Keys must be added explicitly via AddKey; no keys are hardcoded.
 type InMemoryAPIKeyValidator struct {
 	mu   sync.RWMutex
 	keys map[string]*APIKeyInfo
@@ -31,18 +35,7 @@ type InMemoryAPIKeyValidator struct {
 
 func NewInMemoryAPIKeyValidator() *InMemoryAPIKeyValidator {
 	return &InMemoryAPIKeyValidator{
-		keys: map[string]*APIKeyInfo{
-			"dev-api-key": {
-				TenantID: "tenant_dev",
-				Scopes:   []string{"*"},
-				Status:   "ACTIVE",
-			},
-			"test-api-key": {
-				TenantID: "tenant_test",
-				Scopes:   []string{"*"},
-				Status:   "ACTIVE",
-			},
-		},
+		keys: make(map[string]*APIKeyInfo),
 	}
 }
 
@@ -138,7 +131,20 @@ func (v *HTTPAPIKeyValidator) Validate(ctx context.Context, apiKey string) (*API
 	return info, nil
 }
 
-func Auth(validator APIKeyValidator) func(http.Handler) http.Handler {
+// jwtConfig holds the configuration for JWT validation.
+type jwtConfig struct {
+	secret []byte
+	issuer string
+}
+
+// Auth returns an HTTP middleware that validates requests via API key or JWT bearer token.
+// jwtSecret is the HMAC-SHA256 signing key used to verify bearer tokens.
+func Auth(validator APIKeyValidator, jwtSecret string) func(http.Handler) http.Handler {
+	cfg := &jwtConfig{
+		secret: []byte(jwtSecret),
+		issuer: "aex-identity",
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// 1. Check API Key header
@@ -158,24 +164,66 @@ func Auth(validator APIKeyValidator) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 2. Check Bearer token
+			// 2. Check Bearer token (JWT)
 			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
-				token := strings.TrimPrefix(auth, "Bearer ")
-				// For Phase A, we accept any non-empty bearer token with a development tenant
-				// In production, this would validate against Firebase Auth
-				if token != "" {
-					ctx := context.WithValue(r.Context(), TenantIDKey, "tenant_bearer")
-					ctx = context.WithValue(ctx, RolesKey, []string{"*"})
-					next.ServeHTTP(w, r.WithContext(ctx))
+				tokenStr := strings.TrimPrefix(auth, "Bearer ")
+				if tokenStr == "" {
+					respondError(w, http.StatusUnauthorized, "invalid_token", "Bearer token is empty", r)
 					return
 				}
-				respondError(w, http.StatusUnauthorized, "invalid_token", "Invalid bearer token", r)
+
+				claims, err := validateJWT(tokenStr, cfg)
+				if err != nil {
+					respondError(w, http.StatusUnauthorized, "invalid_token", fmt.Sprintf("Invalid bearer token: %v", err), r)
+					return
+				}
+
+				ctx := context.WithValue(r.Context(), TenantIDKey, claims.TenantID)
+				ctx = context.WithValue(ctx, RolesKey, claims.Scopes)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 
 			respondError(w, http.StatusUnauthorized, "authentication_required", "Authentication required", r)
 		})
 	}
+}
+
+// AEXClaims represents the custom JWT claims used by Agent Exchange.
+type AEXClaims struct {
+	jwt.RegisteredClaims
+	TenantID string   `json:"tenant_id"`
+	Scopes   []string `json:"scopes"`
+}
+
+// validateJWT parses and validates a JWT token string using HMAC-SHA256.
+// It checks the signature, expiration, and issuer.
+func validateJWT(tokenStr string, cfg *jwtConfig) (*AEXClaims, error) {
+	claims := &AEXClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (any, error) {
+		// Ensure the signing method is HMAC (HS256/HS384/HS512).
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return cfg.secret, nil
+	},
+		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(cfg.issuer),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
+		return nil, fmt.Errorf("token is not valid")
+	}
+
+	if claims.TenantID == "" {
+		return nil, fmt.Errorf("token missing required tenant_id claim")
+	}
+
+	return claims, nil
 }
 
 func GetTenantID(ctx context.Context) string {

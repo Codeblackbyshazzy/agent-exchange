@@ -19,7 +19,7 @@ help:
 # Service directories
 SERVICES := aex-work-publisher aex-settlement aex-bid-gateway aex-bid-evaluator \
             aex-contract-engine aex-provider-registry aex-trust-broker aex-identity \
-            aex-gateway aex-telemetry
+            aex-gateway aex-telemetry aex-certauth
 
 # Build all services
 build:
@@ -106,6 +106,9 @@ docker-build:
 	@docker build -f src/aex-identity/Dockerfile -t agent-exchange/aex-identity:local src/
 	@docker build -f src/aex-gateway/Dockerfile -t agent-exchange/aex-gateway:local src/
 	@docker build -f src/aex-telemetry/Dockerfile -t agent-exchange/aex-telemetry:local src/
+	@docker build -f src/aex-certauth/Dockerfile -t agent-exchange/aex-certauth:local src/
+	@docker build -f src/aex-credentials-provider/Dockerfile -t agent-exchange/aex-credentials-provider:local src/
+	@docker build -f src/aex-token-bank/Dockerfile -t agent-exchange/aex-token-bank:local src/
 	@echo "Docker build complete!"
 
 # Build specific Docker image
@@ -172,6 +175,7 @@ quickstart: build docker-build docker-up
 	@echo "  - Identity:          http://localhost:8087"
 	@echo "  - Settlement:        http://localhost:8088"
 	@echo "  - Telemetry:         http://localhost:8089"
+	@echo "  - CertAuth:          http://localhost:8091"
 	@echo ""
 	@echo "MongoDB: mongodb://root:root@localhost:27017"
 	@echo ""
@@ -196,7 +200,7 @@ dev-settlement:
 # Check service health
 health:
 	@echo "Checking service health..."
-	@for port in 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089; do \
+	@for port in 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089 8091; do \
 		if curl -s http://localhost:$$port/health > /dev/null 2>&1; then \
 			echo "✓ Port $$port: Healthy"; \
 		else \

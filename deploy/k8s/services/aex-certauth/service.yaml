@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aex-certauth
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-certauth
+    app.kubernetes.io/component: certauth
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aex-certauth
+  ports:
+    - port: 8091
+      targetPort: 8091
+      protocol: TCP
+      name: http

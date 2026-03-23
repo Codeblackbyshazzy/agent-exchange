@@ -35,7 +35,11 @@ type Service struct {
 	paymentProvider *payment.ProviderClient
 }
 
-func New(st store.SettlementStore) *Service {
+func New(st store.SettlementStore, pub *events.Publisher) *Service {
+	if pub == nil {
+		pub = events.NewPublisher("aex-settlement")
+	}
+
 	// Initialize AP2 with mock credentials provider
 	credentials := ap2.NewMockCredentialsProvider()
 	ap2Handler := ap2.NewPaymentHandler(credentials)
@@ -53,7 +57,7 @@ func New(st store.SettlementStore) *Service {
 
 	return &Service{
 		store:           st,
-		events:          events.NewPublisher("aex-settlement"),
+		events:          pub,
 		ap2Handler:      ap2Handler,
 		ap2Enabled:      ap2Enabled,
 		paymentProvider: paymentProviderClient,
@@ -277,86 +281,96 @@ func (s *Service) GetPaymentMethods(ctx context.Context, userID string) ([]ap2.P
 	return s.ap2Handler.GetPaymentMethods(ctx, userID)
 }
 
-// settleExecution updates ledgers and balances for an execution
+// decimalToCents converts a decimal string (e.g. "12.50") to cents (e.g. 1250).
+// Uses shopspring/decimal for precise conversion then truncates to int64.
+func decimalToCents(amount string) (int64, error) {
+	d, err := decimal.NewFromString(amount)
+	if err != nil {
+		return 0, fmt.Errorf("invalid decimal %q: %w", amount, err)
+	}
+	// Multiply by 100 and round to nearest cent, then convert to int64
+	cents := d.Mul(decimal.NewFromInt(100)).Round(0).IntPart()
+	return cents, nil
+}
+
+// centsToDecimalString converts cents (e.g. 1250) to a decimal display string (e.g. "12.50").
+func centsToDecimalString(cents int64) string {
+	d := decimal.New(cents, -2) // cents * 10^-2
+	return d.StringFixed(2)
+}
+
+// settleExecution updates ledgers and balances for an execution.
+// All four operations (consumer debit, consumer ledger, provider credit, provider ledger)
+// are wrapped in a database transaction to prevent partial settlement on failure.
+// Balance updates use atomic $inc to prevent read-modify-write race conditions.
 func (s *Service) settleExecution(ctx context.Context, execution model.Execution) error {
 	now := time.Now().UTC()
 
-	// Parse amounts
-	agreedPrice, _ := decimal.NewFromString(execution.AgreedPrice)
-	providerPayout, _ := decimal.NewFromString(execution.ProviderPayout)
-
-	// Debit consumer
-	consumerBalance, err := s.store.GetBalance(ctx, execution.ConsumerID)
+	// Convert price strings to cents for atomic integer operations
+	agreedPriceCents, err := decimalToCents(execution.AgreedPrice)
 	if err != nil {
-		return fmt.Errorf("get consumer balance: %w", err)
+		return fmt.Errorf("parse agreed_price: %w", err)
 	}
-
-	currentBalance, _ := decimal.NewFromString(consumerBalance.Balance)
-	newConsumerBalance := currentBalance.Sub(agreedPrice)
-
-	// Check for sufficient funds (could be negative for credit accounts)
-	if newConsumerBalance.LessThan(decimal.Zero) {
-		slog.WarnContext(ctx, "consumer has negative balance",
-			"consumer_id", execution.ConsumerID,
-			"balance", newConsumerBalance.String(),
-		)
-	}
-
-	// Update consumer balance
-	consumerBalance.Balance = newConsumerBalance.String()
-	consumerBalance.LastUpdated = now
-	if err := s.store.UpdateBalance(ctx, consumerBalance); err != nil {
-		return fmt.Errorf("update consumer balance: %w", err)
-	}
-
-	// Create consumer ledger entry (DEBIT)
-	consumerEntry := model.LedgerEntry{
-		ID:            generateID("ledger"),
-		TenantID:      execution.ConsumerID,
-		EntryType:     "DEBIT",
-		Amount:        agreedPrice.String(),
-		BalanceAfter:  newConsumerBalance.String(),
-		ReferenceType: "execution",
-		ReferenceID:   execution.ID,
-		Description:   fmt.Sprintf("Payment for contract %s", execution.ContractID),
-		CreatedAt:     now,
-	}
-	if err := s.store.AppendLedgerEntry(ctx, consumerEntry); err != nil {
-		return fmt.Errorf("append consumer ledger entry: %w", err)
-	}
-
-	// Credit provider
-	providerBalance, err := s.store.GetBalance(ctx, execution.ProviderID)
+	providerPayoutCents, err := decimalToCents(execution.ProviderPayout)
 	if err != nil {
-		return fmt.Errorf("get provider balance: %w", err)
+		return fmt.Errorf("parse provider_payout: %w", err)
 	}
 
-	currentBalance, _ = decimal.NewFromString(providerBalance.Balance)
-	newProviderBalance := currentBalance.Add(providerPayout)
+	return s.store.WithTransaction(ctx, func(txCtx context.Context) error {
+		// 1. Atomically debit consumer balance
+		updatedConsumer, err := s.store.IncrementBalance(txCtx, execution.ConsumerID, -agreedPriceCents, "USD")
+		if err != nil {
+			return fmt.Errorf("debit consumer balance: %w", err)
+		}
 
-	providerBalance.Balance = newProviderBalance.String()
-	providerBalance.LastUpdated = now
-	if err := s.store.UpdateBalance(ctx, providerBalance); err != nil {
-		return fmt.Errorf("update provider balance: %w", err)
-	}
+		// Log warning if consumer goes negative (allowed for credit accounts)
+		if updatedConsumer.Balance < 0 {
+			slog.WarnContext(txCtx, "consumer has negative balance",
+				"consumer_id", execution.ConsumerID,
+				"balance_cents", updatedConsumer.Balance,
+			)
+		}
 
-	// Create provider ledger entry (CREDIT)
-	providerEntry := model.LedgerEntry{
-		ID:            generateID("ledger"),
-		TenantID:      execution.ProviderID,
-		EntryType:     "CREDIT",
-		Amount:        providerPayout.String(),
-		BalanceAfter:  newProviderBalance.String(),
-		ReferenceType: "execution",
-		ReferenceID:   execution.ID,
-		Description:   fmt.Sprintf("Payout for contract %s", execution.ContractID),
-		CreatedAt:     now,
-	}
-	if err := s.store.AppendLedgerEntry(ctx, providerEntry); err != nil {
-		return fmt.Errorf("append provider ledger entry: %w", err)
-	}
+		// 2. Create consumer ledger entry (DEBIT)
+		consumerEntry := model.LedgerEntry{
+			ID:            generateID("ledger"),
+			TenantID:      execution.ConsumerID,
+			EntryType:     "DEBIT",
+			Amount:        agreedPriceCents,
+			BalanceAfter:  updatedConsumer.Balance,
+			ReferenceType: "execution",
+			ReferenceID:   execution.ID,
+			Description:   fmt.Sprintf("Payment for contract %s", execution.ContractID),
+			CreatedAt:     now,
+		}
+		if err := s.store.AppendLedgerEntry(txCtx, consumerEntry); err != nil {
+			return fmt.Errorf("append consumer ledger entry: %w", err)
+		}
 
-	return nil
+		// 3. Atomically credit provider balance
+		updatedProvider, err := s.store.IncrementBalance(txCtx, execution.ProviderID, providerPayoutCents, "USD")
+		if err != nil {
+			return fmt.Errorf("credit provider balance: %w", err)
+		}
+
+		// 4. Create provider ledger entry (CREDIT)
+		providerEntry := model.LedgerEntry{
+			ID:            generateID("ledger"),
+			TenantID:      execution.ProviderID,
+			EntryType:     "CREDIT",
+			Amount:        providerPayoutCents,
+			BalanceAfter:  updatedProvider.Balance,
+			ReferenceType: "execution",
+			ReferenceID:   execution.ID,
+			Description:   fmt.Sprintf("Payout for contract %s", execution.ContractID),
+			CreatedAt:     now,
+		}
+		if err := s.store.AppendLedgerEntry(txCtx, providerEntry); err != nil {
+			return fmt.Errorf("append provider ledger entry: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // calculateCost calculates platform fee and provider payout
@@ -402,9 +416,10 @@ func (s *Service) GetBalance(ctx context.Context, tenantID string) (model.Balanc
 	}
 
 	return model.BalanceResponse{
-		TenantID: balance.TenantID,
-		Balance:  balance.Balance,
-		Currency: balance.Currency,
+		TenantID:     balance.TenantID,
+		BalanceCents: balance.Balance,
+		Balance:      centsToDecimalString(balance.Balance),
+		Currency:     balance.Currency,
 	}, nil
 }
 
@@ -421,10 +436,17 @@ func (s *Service) GetTransactions(ctx context.Context, tenantID string, limit in
 	}, nil
 }
 
-// ProcessDeposit processes a deposit for a tenant
+// ProcessDeposit processes a deposit for a tenant.
+// The balance update and ledger entry are wrapped in a transaction to prevent
+// partial updates. The balance increment is atomic to prevent race conditions.
 func (s *Service) ProcessDeposit(ctx context.Context, tenantID string, amount string) (model.Transaction, error) {
 	amountDec, err := decimal.NewFromString(amount)
 	if err != nil || amountDec.LessThanOrEqual(decimal.Zero) {
+		return model.Transaction{}, ErrInvalidAmount
+	}
+
+	amountCents, err := decimalToCents(amount)
+	if err != nil || amountCents <= 0 {
 		return model.Transaction{}, ErrInvalidAmount
 	}
 
@@ -441,42 +463,41 @@ func (s *Service) ProcessDeposit(ctx context.Context, tenantID string, amount st
 		CompletedAt: &now,
 	}
 
-	if err := s.store.SaveTransaction(ctx, tx); err != nil {
-		return model.Transaction{}, fmt.Errorf("save transaction: %w", err)
-	}
+	// Wrap all mutations in a transaction for atomicity
+	err = s.store.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.store.SaveTransaction(txCtx, tx); err != nil {
+			return fmt.Errorf("save transaction: %w", err)
+		}
 
-	// Update balance
-	balance, err := s.store.GetBalance(ctx, tenantID)
+		// Atomically increment balance
+		updatedBalance, err := s.store.IncrementBalance(txCtx, tenantID, amountCents, "USD")
+		if err != nil {
+			return fmt.Errorf("increment balance: %w", err)
+		}
+
+		// Create ledger entry
+		entry := model.LedgerEntry{
+			ID:            generateID("ledger"),
+			TenantID:      tenantID,
+			EntryType:     "DEPOSIT",
+			Amount:        amountCents,
+			BalanceAfter:  updatedBalance.Balance,
+			ReferenceType: "deposit",
+			ReferenceID:   tx.ID,
+			Description:   "Deposit",
+			CreatedAt:     now,
+		}
+		if err := s.store.AppendLedgerEntry(txCtx, entry); err != nil {
+			return fmt.Errorf("append ledger entry: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return model.Transaction{}, err
 	}
 
-	currentBalance, _ := decimal.NewFromString(balance.Balance)
-	newBalance := currentBalance.Add(amountDec)
-
-	balance.Balance = newBalance.String()
-	balance.LastUpdated = now
-	if err := s.store.UpdateBalance(ctx, balance); err != nil {
-		return model.Transaction{}, err
-	}
-
-	// Create ledger entry
-	entry := model.LedgerEntry{
-		ID:            generateID("ledger"),
-		TenantID:      tenantID,
-		EntryType:     "DEPOSIT",
-		Amount:        amount,
-		BalanceAfter:  newBalance.String(),
-		ReferenceType: "deposit",
-		ReferenceID:   tx.ID,
-		Description:   "Deposit",
-		CreatedAt:     now,
-	}
-	if err := s.store.AppendLedgerEntry(ctx, entry); err != nil {
-		return model.Transaction{}, err
-	}
-
-	slog.InfoContext(ctx, "deposit_processed", "tx_id", tx.ID, "tenant_id", tenantID, "amount", amount)
+	slog.InfoContext(ctx, "deposit_processed", "tx_id", tx.ID, "tenant_id", tenantID, "amount", amount, "amount_cents", amountCents)
 
 	return tx, nil
 }

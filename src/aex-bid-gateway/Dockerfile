@@ -6,6 +6,10 @@ RUN apk add --no-cache git
 
 WORKDIR /build
 
+# Copy internal modules first
+COPY internal/httpclient internal/httpclient
+COPY internal/telemetry internal/telemetry
+
 # Copy service files
 COPY aex-bid-gateway aex-bid-gateway
 

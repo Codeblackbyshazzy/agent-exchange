@@ -7,18 +7,45 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/parlakisik/agent-exchange/aex-gateway/internal/config"
 	"github.com/parlakisik/agent-exchange/aex-gateway/internal/httpapi"
 )
 
-func TestHealthEndpoint(t *testing.T) {
-	cfg := &config.Config{
+const testJWTSecret = "test-secret-for-gateway-tests"
+
+// issueTestJWT creates a signed JWT for testing purposes.
+func issueTestJWT(t *testing.T, tenantID string, scopes []string) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"iss":       "aex-identity",
+		"tenant_id": tenantID,
+		"scopes":    scopes,
+		"exp":       time.Now().Add(time.Hour).Unix(),
+		"iat":       time.Now().Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(testJWTSecret))
+	if err != nil {
+		t.Fatalf("failed to sign test JWT: %v", err)
+	}
+	return signed
+}
+
+func testConfig() *config.Config {
+	return &config.Config{
 		Port:               "8080",
 		Environment:        "test",
+		RedisURL:           "", // empty → rate limiter fails open (no Redis in tests)
+		JWTSecret:          testJWTSecret,
 		RateLimitPerMinute: 1000,
 		RateLimitBurstSize: 50,
 		RequestTimeout:     30 * time.Second,
 	}
+}
+
+func TestHealthEndpoint(t *testing.T) {
+	cfg := testConfig()
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
@@ -45,13 +72,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestReadyEndpoint(t *testing.T) {
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
@@ -68,20 +89,36 @@ func TestReadyEndpoint(t *testing.T) {
 	}
 }
 
-func TestInfoEndpoint(t *testing.T) {
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+func TestInfoEndpointRequiresAuth(t *testing.T) {
+	cfg := testConfig()
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
+	// Unauthenticated request should be rejected
 	resp, err := http.Get(ts.URL + "/v1/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated /v1/info, got %d", resp.StatusCode)
+	}
+}
+
+func TestInfoEndpointWithJWT(t *testing.T) {
+	cfg := testConfig()
+
+	router := httpapi.NewRouter(cfg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/info", nil)
+	req.Header.Set("Authorization", "Bearer "+issueTestJWT(t, "tenant_jwt", []string{"read"}))
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,14 +139,8 @@ func TestInfoEndpoint(t *testing.T) {
 }
 
 func TestAuthRequiredForAPI(t *testing.T) {
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		WorkPublisherURL:   "http://localhost:8081",
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.WorkPublisherURL = "http://localhost:8081"
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
@@ -127,7 +158,7 @@ func TestAuthRequiredForAPI(t *testing.T) {
 	}
 }
 
-func TestAuthWithAPIKey(t *testing.T) {
+func TestAuthWithJWT(t *testing.T) {
 	// Start a mock upstream service
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify internal headers were added
@@ -138,30 +169,24 @@ func TestAuthWithAPIKey(t *testing.T) {
 			t.Error("X-Request-ID header not set")
 		}
 		// Verify auth headers were removed
-		if r.Header.Get("X-API-Key") != "" {
-			t.Error("X-API-Key header should have been removed")
+		if r.Header.Get("Authorization") != "" {
+			t.Error("Authorization header should have been removed")
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"works":[]}`))
 	}))
 	defer upstream.Close()
 
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		WorkPublisherURL:   upstream.URL,
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.WorkPublisherURL = upstream.URL
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	// Request with valid API key should succeed
+	// Request with valid JWT should succeed
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/work", nil)
-	req.Header.Set("X-API-Key", "dev-api-key")
+	req.Header.Set("Authorization", "Bearer "+issueTestJWT(t, "tenant_jwt", []string{"read"}))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -182,6 +207,29 @@ func TestAuthWithAPIKey(t *testing.T) {
 	}
 }
 
+func TestBearerTokenRejectsArbitraryString(t *testing.T) {
+	cfg := testConfig()
+	cfg.WorkPublisherURL = "http://localhost:8081"
+
+	router := httpapi.NewRouter(cfg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	// An arbitrary non-empty bearer token should now be rejected
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/work", nil)
+	req.Header.Set("Authorization", "Bearer not-a-real-jwt")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for arbitrary bearer token, got %d", resp.StatusCode)
+	}
+}
+
 func TestInvalidAPIKey(t *testing.T) {
 	// Start a mock upstream (needed because auth happens before proxy)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -189,14 +237,8 @@ func TestInvalidAPIKey(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		WorkPublisherURL:   upstream.URL,
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.WorkPublisherURL = upstream.URL
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
@@ -216,30 +258,53 @@ func TestInvalidAPIKey(t *testing.T) {
 	}
 }
 
+func TestHardcodedDevKeysRemoved(t *testing.T) {
+	cfg := testConfig()
+	cfg.WorkPublisherURL = "http://localhost:8081"
+
+	router := httpapi.NewRouter(cfg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	// Old hardcoded "dev-api-key" should no longer work
+	for _, key := range []string{"dev-api-key", "test-api-key"} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/work", nil)
+		req.Header.Set("X-API-Key", key)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for old hardcoded key %q, got %d", key, resp.StatusCode)
+		}
+	}
+}
+
 func TestRateLimiting(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
 
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		WorkPublisherURL:   upstream.URL,
-		RateLimitPerMinute: 3, // Very low limit for testing
-		RateLimitBurstSize: 1,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.WorkPublisherURL = upstream.URL
+	cfg.RateLimitPerMinute = 3 // Very low limit for testing
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
+	bearer := issueTestJWT(t, "tenant_ratelimit", []string{"read"})
+
 	// Make requests until rate limited
+	// Note: without Redis the limiter fails open, so this test may not trigger 429.
 	rateLimited := false
 	for i := 0; i < 10; i++ {
 		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/work", nil)
-		req.Header.Set("X-API-Key", "dev-api-key")
+		req.Header.Set("Authorization", "Bearer "+bearer)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -254,7 +319,7 @@ func TestRateLimiting(t *testing.T) {
 	}
 
 	if !rateLimited {
-		t.Log("rate limiting not triggered (may need more requests)")
+		t.Log("rate limiting not triggered (expected when Redis is unavailable – limiter fails open)")
 	}
 }
 
@@ -264,14 +329,8 @@ func TestCORS(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		WorkPublisherURL:   upstream.URL,
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.WorkPublisherURL = upstream.URL
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)
@@ -298,13 +357,7 @@ func TestCORS(t *testing.T) {
 }
 
 func TestRequestID(t *testing.T) {
-	cfg := &config.Config{
-		Port:               "8080",
-		Environment:        "test",
-		RateLimitPerMinute: 1000,
-		RateLimitBurstSize: 50,
-		RequestTimeout:     30 * time.Second,
-	}
+	cfg := testConfig()
 
 	router := httpapi.NewRouter(cfg)
 	ts := httptest.NewServer(router)

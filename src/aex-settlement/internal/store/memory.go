@@ -99,7 +99,7 @@ func (s *MemoryStore) GetBalance(ctx context.Context, tenantID string) (model.Te
 	if !ok {
 		return model.TenantBalance{
 			TenantID: tenantID,
-			Balance:  "0.00",
+			Balance:  0,
 			Currency: "USD",
 		}, nil
 	}
@@ -111,6 +111,30 @@ func (s *MemoryStore) UpdateBalance(ctx context.Context, balance model.TenantBal
 	defer s.mu.Unlock()
 	s.balances[balance.TenantID] = balance
 	return nil
+}
+
+func (s *MemoryStore) IncrementBalance(ctx context.Context, tenantID string, deltaCents int64, currency string) (model.TenantBalance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bal, ok := s.balances[tenantID]
+	if !ok {
+		bal = model.TenantBalance{
+			TenantID: tenantID,
+			Balance:  0,
+			Currency: currency,
+		}
+	}
+	bal.Balance += deltaCents
+	bal.Currency = currency
+	s.balances[tenantID] = bal
+	return bal, nil
+}
+
+// WithTransaction executes fn directly for the in-memory store.
+// The in-memory store uses a mutex for synchronization, so there is no
+// multi-document transaction concept, but this satisfies the interface.
+func (s *MemoryStore) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
 }
 
 func (s *MemoryStore) SaveTransaction(ctx context.Context, tx model.Transaction) error {

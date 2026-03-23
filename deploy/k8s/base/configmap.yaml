@@ -26,6 +26,11 @@ data:
   TELEMETRY_URL: "http://aex-telemetry.aex.svc.cluster.local:8080"
   CREDENTIALS_PROVIDER_URL: "http://aex-credentials-provider.aex.svc.cluster.local:8080"
   WORK_PUBLISHER_URL: "http://aex-work-publisher.aex.svc.cluster.local:8080"
+  CERTAUTH_URL: "http://aex-certauth:8091"
+
+  # --- Infrastructure URLs ---
+  REDIS_URL: "redis://redis:6379"
+  NATS_URL: "nats://nats:4222"
 
   # --- Agent / Demo URLs ---
   AEX_GATEWAY_URL: "http://aex-gateway.aex.svc.cluster.local:8080"

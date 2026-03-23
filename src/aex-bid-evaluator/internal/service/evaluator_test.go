@@ -10,54 +10,59 @@ import (
 
 func TestWeightsForStrategy(t *testing.T) {
 	tests := []struct {
-		name           string
-		strategy       string
-		wantPrice      float64
-		wantTrust      float64
-		wantConfidence float64
-		wantMVPSample  float64
-		wantSLA        float64
-		wantSumToOne   bool
+		name              string
+		strategy          string
+		wantPrice         float64
+		wantTrust         float64
+		wantConfidence    float64
+		wantMVPSample     float64
+		wantSLA           float64
+		wantCertification float64
+		wantSumToOne      bool
 	}{
 		{
-			name:           "lowest_price strategy",
-			strategy:       "lowest_price",
-			wantPrice:      0.5,
-			wantTrust:      0.2,
-			wantConfidence: 0.1,
-			wantMVPSample:  0.1,
-			wantSLA:        0.1,
-			wantSumToOne:   true,
+			name:              "lowest_price strategy",
+			strategy:          "lowest_price",
+			wantPrice:         0.45,
+			wantTrust:         0.15,
+			wantConfidence:    0.1,
+			wantMVPSample:     0.05,
+			wantSLA:           0.1,
+			wantCertification: 0.15,
+			wantSumToOne:      true,
 		},
 		{
-			name:           "best_quality strategy",
-			strategy:       "best_quality",
-			wantPrice:      0.1,
-			wantTrust:      0.4,
-			wantConfidence: 0.2,
-			wantMVPSample:  0.2,
-			wantSLA:        0.1,
-			wantSumToOne:   true,
+			name:              "best_quality strategy",
+			strategy:          "best_quality",
+			wantPrice:         0.1,
+			wantTrust:         0.3,
+			wantConfidence:    0.2,
+			wantMVPSample:     0.1,
+			wantSLA:           0.1,
+			wantCertification: 0.2,
+			wantSumToOne:      true,
 		},
 		{
-			name:           "balanced strategy",
-			strategy:       "balanced",
-			wantPrice:      0.3,
-			wantTrust:      0.3,
-			wantConfidence: 0.15,
-			wantMVPSample:  0.15,
-			wantSLA:        0.1,
-			wantSumToOne:   true,
+			name:              "balanced strategy",
+			strategy:          "balanced",
+			wantPrice:         0.25,
+			wantTrust:         0.25,
+			wantConfidence:    0.15,
+			wantMVPSample:     0.1,
+			wantSLA:           0.1,
+			wantCertification: 0.15,
+			wantSumToOne:      true,
 		},
 		{
-			name:           "unknown strategy defaults to balanced",
-			strategy:       "unknown",
-			wantPrice:      0.3,
-			wantTrust:      0.3,
-			wantConfidence: 0.15,
-			wantMVPSample:  0.15,
-			wantSLA:        0.1,
-			wantSumToOne:   true,
+			name:              "unknown strategy defaults to balanced",
+			strategy:          "unknown",
+			wantPrice:         0.25,
+			wantTrust:         0.25,
+			wantConfidence:    0.15,
+			wantMVPSample:     0.1,
+			wantSLA:           0.1,
+			wantCertification: 0.15,
+			wantSumToOne:      true,
 		},
 	}
 
@@ -80,9 +85,12 @@ func TestWeightsForStrategy(t *testing.T) {
 			if weights.SLA != tt.wantSLA {
 				t.Errorf("SLA weight = %v, want %v", weights.SLA, tt.wantSLA)
 			}
+			if weights.Certification != tt.wantCertification {
+				t.Errorf("Certification weight = %v, want %v", weights.Certification, tt.wantCertification)
+			}
 
 			if tt.wantSumToOne {
-				sum := weights.Price + weights.Trust + weights.Confidence + weights.MVPSample + weights.SLA
+				sum := weights.Price + weights.Trust + weights.Confidence + weights.MVPSample + weights.SLA + weights.Certification
 				if sum < 0.99 || sum > 1.01 { // Allow small floating point error
 					t.Errorf("Weights sum = %v, want 1.0", sum)
 				}
@@ -394,7 +402,7 @@ func TestEvaluate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock clients - use empty URLs since we're testing with mock data
-			svc, err := New("http://localhost:8081", "http://localhost:8082", st)
+			svc, err := New("http://localhost:8081", "http://localhost:8082", "http://localhost:8089", st)
 			if err != nil {
 				t.Fatalf("Failed to create service: %v", err)
 			}
@@ -405,14 +413,14 @@ func TestEvaluate(t *testing.T) {
 
 			// Test the scoring weights are applied correctly
 			weights := weightsForStrategy(tt.work.Budget.BidStrategy)
-			if tt.work.Budget.BidStrategy == "lowest_price" && weights.Price != 0.5 {
-				t.Error("lowest_price strategy should prioritize price with 0.5 weight")
+			if tt.work.Budget.BidStrategy == "lowest_price" && weights.Price != 0.45 {
+				t.Error("lowest_price strategy should prioritize price with 0.45 weight")
 			}
-			if tt.work.Budget.BidStrategy == "best_quality" && weights.Trust != 0.4 {
-				t.Error("best_quality strategy should prioritize trust with 0.4 weight")
+			if tt.work.Budget.BidStrategy == "best_quality" && weights.Trust != 0.3 {
+				t.Error("best_quality strategy should prioritize trust with 0.3 weight")
 			}
-			if tt.work.Budget.BidStrategy == "balanced" && weights.Price != 0.3 {
-				t.Error("balanced strategy should have 0.3 price weight")
+			if tt.work.Budget.BidStrategy == "balanced" && weights.Price != 0.25 {
+				t.Error("balanced strategy should have 0.25 price weight")
 			}
 
 			_ = svc // Use the service to avoid unused variable error

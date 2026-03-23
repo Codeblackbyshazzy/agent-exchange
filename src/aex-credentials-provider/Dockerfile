@@ -2,8 +2,9 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy internal dependencies first
-COPY internal/ ./internal/
+# Copy internal modules first
+COPY internal/ap2 ./internal/ap2
+COPY internal/telemetry ./internal/telemetry
 
 # Copy service module
 COPY aex-credentials-provider/ ./aex-credentials-provider/

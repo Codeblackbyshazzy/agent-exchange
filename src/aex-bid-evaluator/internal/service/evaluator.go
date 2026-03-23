@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"sort"
@@ -21,16 +22,18 @@ import (
 type Service struct {
 	bidGateway  *clients.BidGatewayClient
 	trustBroker *clients.TrustBrokerClient
+	certAuth    *clients.CertAuthClient
 	store       store.EvaluationStore
 }
 
-func New(bidGatewayURL string, trustBrokerURL string, st store.EvaluationStore) (*Service, error) {
+func New(bidGatewayURL string, trustBrokerURL string, certAuthURL string, st store.EvaluationStore) (*Service, error) {
 	if strings.TrimSpace(bidGatewayURL) == "" {
 		return nil, errors.New("BID_GATEWAY_URL is required")
 	}
 	return &Service{
 		bidGateway:  clients.NewBidGatewayClient(bidGatewayURL),
 		trustBroker: clients.NewTrustBrokerClient(trustBrokerURL),
+		certAuth:    clients.NewCertAuthClient(certAuthURL),
 		store:       st,
 	}, nil
 }
@@ -99,27 +102,48 @@ func (s *Service) evaluate(ctx context.Context, work model.WorkSpec) (model.BidE
 	}
 	scoredBids := make([]scored, 0, len(valid))
 	for _, bid := range valid {
-		trust, _ := s.trustBroker.GetScore(ctx, bid.ProviderID)
+		trust, err := s.trustBroker.GetScore(ctx, bid.ProviderID)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to fetch trust score, skipping trust component",
+				"provider_id", bid.ProviderID,
+				"error", err,
+			)
+			// Leave trust at 0 so the trust component contributes nothing
+			// rather than silently assuming a default score.
+			trust = 0
+		}
+
+		certScore, err := s.certAuth.GetCertScore(ctx, bid.ProviderID)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to get cert score",
+				"provider_id", bid.ProviderID,
+				"error", err,
+			)
+			certScore = 0 // graceful degradation
+		}
+
 		priceScore := clamp01(1 - (bid.Price / work.Budget.MaxPrice))
 		confScore := clamp01(bid.Confidence)
 		mvpScore := 0.5
 		if bid.MVPSample != nil {
-			mvpScore = 0.5
+			mvpScore = 0.8
 		}
 		slaScore := calculateSLAScore(bid.SLA, work.Constraints)
 
 		scr := model.BidScore{
-			Price:      priceScore,
-			Trust:      clamp01(trust),
-			Confidence: confScore,
-			MVPSample:  clamp01(mvpScore),
-			SLA:        clamp01(slaScore),
+			Price:         priceScore,
+			Trust:         clamp01(trust),
+			Confidence:    confScore,
+			MVPSample:     clamp01(mvpScore),
+			SLA:           clamp01(slaScore),
+			Certification: clamp01(certScore),
 		}
 		total := weights.Price*scr.Price +
 			weights.Trust*scr.Trust +
 			weights.Confidence*scr.Confidence +
 			weights.MVPSample*scr.MVPSample +
-			weights.SLA*scr.SLA
+			weights.SLA*scr.SLA +
+			weights.Certification*scr.Certification
 		scoredBids = append(scoredBids, scored{bid: bid, score: scr, totalScore: total})
 	}
 
@@ -150,21 +174,22 @@ func (s *Service) evaluate(ctx context.Context, work model.WorkSpec) (model.BidE
 }
 
 type strategyWeights struct {
-	Price      float64
-	Trust      float64
-	Confidence float64
-	MVPSample  float64
-	SLA        float64
+	Price         float64
+	Trust         float64
+	Confidence    float64
+	MVPSample     float64
+	SLA           float64
+	Certification float64
 }
 
 func weightsForStrategy(strategy string) strategyWeights {
 	switch strategy {
 	case "lowest_price":
-		return strategyWeights{Price: 0.5, Trust: 0.2, Confidence: 0.1, MVPSample: 0.1, SLA: 0.1}
+		return strategyWeights{Price: 0.45, Trust: 0.15, Confidence: 0.1, MVPSample: 0.05, SLA: 0.1, Certification: 0.15}
 	case "best_quality":
-		return strategyWeights{Price: 0.1, Trust: 0.4, Confidence: 0.2, MVPSample: 0.2, SLA: 0.1}
+		return strategyWeights{Price: 0.1, Trust: 0.3, Confidence: 0.2, MVPSample: 0.1, SLA: 0.1, Certification: 0.2}
 	default:
-		return strategyWeights{Price: 0.3, Trust: 0.3, Confidence: 0.15, MVPSample: 0.15, SLA: 0.1}
+		return strategyWeights{Price: 0.25, Trust: 0.25, Confidence: 0.15, MVPSample: 0.1, SLA: 0.1, Certification: 0.15}
 	}
 }
 
@@ -226,5 +251,5 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func generateEvalID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
-	return "eval_" + hex.EncodeToString(b[:8])
+	return "eval_" + hex.EncodeToString(b[:])
 }

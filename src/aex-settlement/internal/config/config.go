@@ -10,6 +10,7 @@ type Config struct {
 	StoreType   string
 	MongoURI    string
 	MongoDB     string
+	NatsURL     string
 }
 
 func Load() (*Config, error) {
@@ -19,6 +20,7 @@ func Load() (*Config, error) {
 		StoreType:   getEnv("STORE_TYPE", "mongo"),
 		MongoURI:    getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDB:     getEnv("MONGO_DB", "aex"),
+		NatsURL:     getEnv("NATS_URL", ""),
 	}
 
 	return cfg, nil

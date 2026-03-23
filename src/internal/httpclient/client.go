@@ -3,18 +3,49 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/sony/gobreaker"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// Client is a wrapper around http.Client with retry logic and better error handling
+// ErrCircuitOpen is returned when the circuit breaker is open and requests
+// are being rejected to protect the downstream service.
+var ErrCircuitOpen = errors.New("circuit breaker is open")
+
+// CircuitBreakerConfig defines circuit breaker behavior
+type CircuitBreakerConfig struct {
+	// MaxConsecutiveFailures is the number of consecutive failures before the
+	// circuit breaker trips to the open state. Default: 5.
+	MaxConsecutiveFailures uint32
+	// OpenDuration is how long the breaker stays open before transitioning to
+	// half-open. Default: 10s.
+	OpenDuration time.Duration
+}
+
+// DefaultCircuitBreakerConfig returns sensible defaults for the circuit breaker
+func DefaultCircuitBreakerConfig() CircuitBreakerConfig {
+	return CircuitBreakerConfig{
+		MaxConsecutiveFailures: 5,
+		OpenDuration:           10 * time.Second,
+	}
+}
+
+// Client is a wrapper around http.Client with retry logic, circuit breaker, and better error handling
 type Client struct {
 	httpClient  *http.Client
 	retryConfig RetryConfig
 	serviceName string
+	breaker     *gobreaker.CircuitBreaker
 }
 
 // RetryConfig defines retry behavior
@@ -41,30 +72,105 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
+// newBreaker creates a gobreaker.CircuitBreaker for the given service name and config.
+func newBreaker(serviceName string, cfg CircuitBreakerConfig) *gobreaker.CircuitBreaker {
+	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:    serviceName,
+		Timeout: cfg.OpenDuration,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= cfg.MaxConsecutiveFailures
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			slog.Warn("circuit breaker state change",
+				"service", name,
+				"from", from.String(),
+				"to", to.String(),
+			)
+		},
+	})
+}
+
 // NewClient creates a new HTTP client with default settings
 func NewClient(serviceName string, timeout time.Duration) *Client {
+	cbCfg := DefaultCircuitBreakerConfig()
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
 		retryConfig: DefaultRetryConfig(),
 		serviceName: serviceName,
+		breaker:     newBreaker(serviceName, cbCfg),
 	}
 }
 
 // NewClientWithRetry creates a new HTTP client with custom retry config
 func NewClientWithRetry(serviceName string, timeout time.Duration, retryConfig RetryConfig) *Client {
+	cbCfg := DefaultCircuitBreakerConfig()
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
 		retryConfig: retryConfig,
 		serviceName: serviceName,
+		breaker:     newBreaker(serviceName, cbCfg),
 	}
 }
 
-// Do executes an HTTP request with retry logic
+// NewClientWithCircuitBreaker creates a new HTTP client with custom circuit breaker config
+func NewClientWithCircuitBreaker(serviceName string, timeout time.Duration, cbCfg CircuitBreakerConfig) *Client {
+	return &Client{
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
+		retryConfig: DefaultRetryConfig(),
+		serviceName: serviceName,
+		breaker:     newBreaker(serviceName, cbCfg),
+	}
+}
+
+// Do executes an HTTP request with circuit breaker and retry logic.
+// If the circuit breaker is open, it returns ErrCircuitOpen immediately
+// without attempting the request.
+//
+// A child span is created for each outgoing call, and the current trace
+// context is injected into the request headers so downstream services can
+// continue the trace.
 func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
+	tracer := otel.Tracer("httpclient")
+	spanName := fmt.Sprintf("HTTP %s %s", req.Method, c.serviceName)
+	ctx, span := tracer.Start(ctx, spanName,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			semconv.HTTPMethodKey.String(req.Method),
+			semconv.HTTPTargetKey.String(req.URL.String()),
+			attribute.String("peer.service", c.serviceName),
+		),
+	)
+	defer span.End()
+
+	// Inject trace context into outgoing request headers
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	result, err := c.breaker.Execute(func() (interface{}, error) {
+		return c.doWithRetry(ctx, req)
+	})
+	if err != nil {
+		span.RecordError(err)
+		// Map gobreaker's sentinel error to our own ErrCircuitOpen so callers
+		// don't need to depend on the gobreaker package.
+		if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+			return nil, fmt.Errorf("%s: %w", c.serviceName, ErrCircuitOpen)
+		}
+		return nil, err
+	}
+
+	resp := result.(*http.Response)
+	span.SetAttributes(attribute.Int("http.status_code", resp.StatusCode))
+	return resp, nil
+}
+
+// doWithRetry executes an HTTP request with retry logic (called inside the circuit breaker).
+func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
 	var lastErr error
 	backoff := c.retryConfig.InitialBackoff
 

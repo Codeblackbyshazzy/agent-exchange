@@ -37,6 +37,9 @@ type Provider struct {
 	TrustScore float64        `json:"trust_score" bson:"trust_score"`
 	TrustTier  TrustTier      `json:"trust_tier" bson:"trust_tier"`
 
+	ActiveCertificates int    `json:"active_certificates" bson:"active_certificates"`
+	ReputationTier     string `json:"reputation_tier" bson:"reputation_tier"`
+
 	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
@@ -199,11 +202,31 @@ type ProviderSearchResult struct {
 	AP2Enabled  bool     `json:"ap2_enabled"`
 }
 
-// SearchProvidersRequestV2 includes AP2 filter
+// SearchProvidersRequestV2 includes AP2 and certification filters
 type SearchProvidersRequestV2 struct {
-	SkillTags  []string `json:"skill_tags,omitempty"`
-	Domain     string   `json:"domain,omitempty"`
-	MinTrust   float64  `json:"min_trust,omitempty"`
-	Limit      int      `json:"limit,omitempty"`
-	RequireAP2 bool     `json:"require_ap2,omitempty"`
+	SkillTags            []string `json:"skill_tags,omitempty"`
+	Domain               string   `json:"domain,omitempty"`
+	MinTrust             float64  `json:"min_trust,omitempty"`
+	Limit                int      `json:"limit,omitempty"`
+	RequireAP2           bool     `json:"require_ap2,omitempty"`
+	RequireCertification bool     `json:"require_certification,omitempty"`
+	MinReputationTier    string   `json:"min_reputation_tier,omitempty"`
+	RequiredCapabilities []string `json:"required_capabilities,omitempty"`
+}
+
+// ReputationTierRank returns the numeric rank for a reputation tier string.
+// Higher rank means higher tier. Unknown tiers return 0.
+func ReputationTierRank(tier string) int {
+	switch tier {
+	case "BRONZE":
+		return 1
+	case "SILVER":
+		return 2
+	case "GOLD":
+		return 3
+	case "PLATINUM":
+		return 4
+	default:
+		return 0
+	}
 }

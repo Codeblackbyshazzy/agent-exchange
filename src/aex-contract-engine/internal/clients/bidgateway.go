@@ -2,11 +2,9 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/parlakisik/agent-exchange/internal/httpclient"
 )
 
 type Bid struct {
@@ -22,42 +20,29 @@ type Bid struct {
 
 type BidGatewayClient struct {
 	baseURL string
-	http    *http.Client
+	client  *httpclient.Client
 }
 
 func NewBidGatewayClient(baseURL string) *BidGatewayClient {
 	return &BidGatewayClient{
 		baseURL: baseURL,
-		http:    &http.Client{Timeout: 10 * time.Second},
+		client:  httpclient.NewClient("bid-gateway", 10*time.Second),
 	}
 }
 
 func (c *BidGatewayClient) ListBids(ctx context.Context, workID string) ([]Bid, error) {
-	u, err := url.Parse(c.baseURL + "/internal/v1/bids")
-	if err != nil {
-		return nil, err
-	}
-	q := u.Query()
-	q.Set("work_id", workID)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bid-gateway returned %d", resp.StatusCode)
-	}
 	var out struct {
 		Bids []Bid `json:"bids"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+
+	err := httpclient.NewRequest("GET", c.baseURL).
+		Path("/internal/v1/bids").
+		Query("work_id", workID).
+		Context(ctx).
+		ExecuteJSON(c.client, &out)
+	if err != nil {
 		return nil, err
 	}
+
 	return out.Bids, nil
 }

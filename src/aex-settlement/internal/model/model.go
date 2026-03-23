@@ -45,8 +45,8 @@ type LedgerEntry struct {
 	ID            string    `json:"id" bson:"_id"`
 	TenantID      string    `json:"tenant_id" bson:"tenant_id"`
 	EntryType     string    `json:"entry_type" bson:"entry_type"` // DEBIT|CREDIT|DEPOSIT|WITHDRAWAL
-	Amount        string    `json:"amount" bson:"amount"`         // Decimal as string
-	BalanceAfter  string    `json:"balance_after" bson:"balance_after"`
+	Amount        int64     `json:"amount" bson:"amount"`         // Amount in cents
+	BalanceAfter  int64     `json:"balance_after" bson:"balance_after"`
 	ReferenceType string    `json:"reference_type" bson:"reference_type"` // execution|deposit|withdrawal
 	ReferenceID   string    `json:"reference_id,omitempty" bson:"reference_id,omitempty"`
 	Description   string    `json:"description" bson:"description"`
@@ -56,7 +56,7 @@ type LedgerEntry struct {
 // TenantBalance represents the current balance for a tenant
 type TenantBalance struct {
 	TenantID    string    `json:"tenant_id" bson:"_id"`
-	Balance     string    `json:"balance" bson:"balance"` // Decimal as string
+	Balance     int64     `json:"balance" bson:"balance"` // Balance in cents
 	Currency    string    `json:"currency" bson:"currency"`
 	LastUpdated time.Time `json:"last_updated" bson:"last_updated"`
 }
@@ -85,9 +85,10 @@ type UsageResponse struct {
 
 // BalanceResponse represents balance information
 type BalanceResponse struct {
-	TenantID string `json:"tenant_id"`
-	Balance  string `json:"balance"`
-	Currency string `json:"currency"`
+	TenantID   string `json:"tenant_id"`
+	BalanceCents int64  `json:"balance_cents"`
+	Balance    string `json:"balance"` // Formatted as decimal string for display (e.g. "12.50")
+	Currency   string `json:"currency"`
 }
 
 // TransactionListResponse represents a list of transactions

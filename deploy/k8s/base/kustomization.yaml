@@ -11,6 +11,15 @@ resources:
   # --- MongoDB ---
   - ../services/mongodb/statefulset.yaml
   - ../services/mongodb/service.yaml
+  - ../services/mongodb/backup-cronjob.yaml
+
+  # --- Redis ---
+  - ../services/redis/deployment.yaml
+  - ../services/redis/service.yaml
+
+  # --- NATS ---
+  - ../services/nats/statefulset.yaml
+  - ../services/nats/service.yaml
 
   # --- AEX Core Services ---
   - ../services/aex-gateway/deployment.yaml
@@ -35,6 +44,8 @@ resources:
   - ../services/aex-telemetry/service.yaml
   - ../services/aex-credentials-provider/deployment.yaml
   - ../services/aex-credentials-provider/service.yaml
+  - ../services/aex-certauth/deployment.yaml
+  - ../services/aex-certauth/service.yaml
 
   # --- Code Review Demo Agents ---
   - ../agents/code-reviewer-a/deployment.yaml

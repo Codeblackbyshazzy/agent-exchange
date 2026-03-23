@@ -12,17 +12,39 @@ import (
 	"github.com/parlakisik/agent-exchange/aex-credentials-provider/internal/config"
 	"github.com/parlakisik/agent-exchange/aex-credentials-provider/internal/httpapi"
 	"github.com/parlakisik/agent-exchange/aex-credentials-provider/internal/service"
+	"github.com/parlakisik/agent-exchange/internal/telemetry"
 )
 
 func main() {
-	// Setup structured logging
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Setup structured logging with trace correlation
+	logHandler := telemetry.TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
 	// Load configuration
 	cfg := config.Load()
+
+	// Initialize OpenTelemetry tracing
+	otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
+	tracerShutdown, err := telemetry.InitTracer(context.Background(), "aex-credentials-provider", otlpEndpoint)
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := tracerShutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown tracer", "error", err)
+		}
+	}()
+
+	// Initialize Prometheus metrics
+	metricsHandler, err := telemetry.InitMeter("aex-credentials-provider")
+	if err != nil {
+		slog.Error("failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
 
 	slog.Info("starting aex-credentials-provider",
 		"port", cfg.Port,
@@ -32,10 +54,16 @@ func main() {
 	svc := service.New()
 
 	// Setup HTTP server
-	router := httpapi.NewRouter(svc)
+	mux := http.NewServeMux()
+	mux.Handle("/", httpapi.NewRouter(svc))
+	mux.Handle("GET /metrics", metricsHandler)
+
+	// Wrap with OpenTelemetry tracing middleware
+	handler := telemetry.HTTPMiddleware("aex-credentials-provider")(mux)
+
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      router,
+		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

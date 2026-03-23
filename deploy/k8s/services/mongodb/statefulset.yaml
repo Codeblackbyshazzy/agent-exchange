@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: agent-exchange
 spec:
   serviceName: mongodb
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: mongodb
@@ -21,9 +21,46 @@ spec:
         app.kubernetes.io/part-of: agent-exchange
     spec:
       terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: init-replica-set
+          image: mongo:7
+          command:
+            - bash
+            - -c
+            - |
+              # Generate the replica set init script for the primary
+              cat > /scripts/rs-init.js <<'SCRIPT'
+              var cfg = {
+                _id: "rs0",
+                members: [
+                  { _id: 0, host: "mongodb-0.mongodb.aex.svc.cluster.local:27017", priority: 2 },
+                  { _id: 1, host: "mongodb-1.mongodb.aex.svc.cluster.local:27017", priority: 1 },
+                  { _id: 2, host: "mongodb-2.mongodb.aex.svc.cluster.local:27017", priority: 1 }
+                ]
+              };
+              try {
+                rs.initiate(cfg);
+              } catch (e) {
+                if (e.codeName === "AlreadyInitialized") {
+                  print("Replica set already initialized");
+                } else {
+                  throw e;
+                }
+              }
+              SCRIPT
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /scripts
       containers:
         - name: mongodb
           image: mongo:7
+          command:
+            - mongod
+            - --replSet
+            - rs0
+            - --bind_ip_all
+            - --keyFile
+            - /etc/mongo-keyfile/keyfile
           ports:
             - containerPort: 27017
               name: mongo
@@ -41,34 +78,59 @@ spec:
                   key: MONGO_PASSWORD
           resources:
             requests:
-              cpu: 200m
-              memory: 256Mi
+              cpu: "1"
+              memory: 2Gi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "2"
+              memory: 4Gi
           livenessProbe:
             exec:
               command:
                 - mongosh
                 - --eval
                 - "db.adminCommand('ping')"
-            initialDelaySeconds: 15
+            initialDelaySeconds: 30
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 10
             failureThreshold: 5
           readinessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
-            initialDelaySeconds: 10
+                - bash
+                - -c
+                - |
+                  mongosh --eval "
+                    try {
+                      var status = rs.status();
+                      var self = status.members.find(m => m.self);
+                      if (self && (self.stateStr === 'PRIMARY' || self.stateStr === 'SECONDARY')) {
+                        quit(0);
+                      }
+                      quit(1);
+                    } catch(e) {
+                      quit(1);
+                    }
+                  "
+            initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 5
           volumeMounts:
             - name: mongo-data
               mountPath: /data/db
+            - name: init-scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: mongo-keyfile
+              mountPath: /etc/mongo-keyfile
+              readOnly: true
+      volumes:
+        - name: init-scripts
+          emptyDir: {}
+        - name: mongo-keyfile
+          secret:
+            secretName: mongodb-keyfile
+            defaultMode: 0400
   volumeClaimTemplates:
     - metadata:
         name: mongo-data
@@ -80,4 +142,4 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 1Gi
+            storage: 50Gi
