@@ -16,6 +16,7 @@ import (
 	"github.com/parlakisik/agent-exchange/aex-token-bank/internal/model"
 	"github.com/parlakisik/agent-exchange/aex-token-bank/internal/service"
 	"github.com/parlakisik/agent-exchange/aex-token-bank/internal/store"
+	"github.com/parlakisik/agent-exchange/internal/telemetry"
 )
 
 func main() {
@@ -26,15 +27,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup structured logging
+	// Setup structured logging with trace correlation
 	logLevel := slog.LevelInfo
 	if cfg.Environment == "development" {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	logHandler := telemetry.TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
+
+	// Initialize OpenTelemetry tracing
+	otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
+	tracerShutdown, err := telemetry.InitTracer(context.Background(), "aex-token-bank", otlpEndpoint)
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := tracerShutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown tracer", "error", err)
+		}
+	}()
+
+	// Initialize Prometheus metrics
+	metricsHandler, err := telemetry.InitMeter("aex-token-bank")
+	if err != nil {
+		slog.Error("failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
 
 	slog.Info("starting aex-token-bank",
 		"environment", cfg.Environment,
@@ -62,12 +84,17 @@ func main() {
 	}
 
 	// Setup HTTP router
-	router := httpapi.NewRouter(svc)
+	mux := http.NewServeMux()
+	mux.Handle("/", httpapi.NewRouter(svc))
+	mux.Handle("GET /metrics", metricsHandler)
+
+	// Wrap with OpenTelemetry tracing middleware
+	wrappedHandler := telemetry.HTTPMiddleware("aex-token-bank")(mux)
 
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      router,
+		Handler:      wrappedHandler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

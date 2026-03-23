@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aex-certauth
+  namespace: aex
+  labels:
+    app.kubernetes.io/name: aex-certauth
+    app.kubernetes.io/component: certauth
+    app.kubernetes.io/part-of: agent-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aex-certauth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aex-certauth
+        app.kubernetes.io/component: certauth
+        app.kubernetes.io/part-of: agent-exchange
+    spec:
+      containers:
+        - name: aex-certauth
+          image: ${REGISTRY}/aex-certauth:${TAG}
+          ports:
+            - containerPort: 8091
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8091"
+            - name: IDENTITY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: IDENTITY_URL
+            - name: TRUST_BROKER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: TRUST_BROKER_URL
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: MONGO_URI
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: MONGO_DB
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8091
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8091
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

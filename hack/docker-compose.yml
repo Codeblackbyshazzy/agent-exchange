@@ -28,6 +28,12 @@ services:
       PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
       CONTRACT_ENGINE_URL: "http://aex-contract-engine:8080"
       TRUST_BROKER_URL: "http://aex-trust-broker:8080"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "dev-jwt-secret-do-not-use-in-production"
+      CERTAUTH_URL: "http://aex-certauth:8091"
+      WORK_PUBLISHER_URL: "http://aex-work-publisher:8080"
+      SETTLEMENT_URL: "http://aex-settlement:8080"
+      BID_EVALUATOR_URL: "http://aex-bid-evaluator:8080"
     ports:
       - "8080:8080"
     depends_on:
@@ -36,6 +42,9 @@ services:
       - aex-provider-registry
       - aex-contract-engine
       - aex-trust-broker
+      - redis
+      - nats
+      - aex-certauth
     networks:
       - aex
 
@@ -50,12 +59,15 @@ services:
       MONGO_COLLECTION_WORK: "work_specs"
       PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
       ENVIRONMENT: "development"
+      NATS_URL: "nats://nats:4222"
     ports:
       - "8081:8080"
     depends_on:
       mongo:
         condition: service_healthy
       aex-provider-registry:
+        condition: service_started
+      nats:
         condition: service_started
     networks:
       - aex
@@ -90,6 +102,7 @@ services:
       PORT: "8080"
       BID_GATEWAY_URL: "http://aex-bid-gateway:8080"
       TRUST_BROKER_URL: "http://aex-trust-broker:8080"
+      CERTAUTH_URL: "http://aex-certauth:8091"
       MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
       MONGO_DB: "aex"
     ports:
@@ -98,6 +111,7 @@ services:
       - mongo
       - aex-bid-gateway
       - aex-trust-broker
+      - aex-certauth
     networks:
       - aex
 
@@ -169,12 +183,15 @@ services:
       MONGO_DB: "aex"
       AP2_ENABLED: "true"
       CREDENTIALS_PROVIDER_URL: "http://aex-credentials-provider:8080"
+      NATS_URL: "nats://nats:4222"
     ports:
       - "8088:8080"
     depends_on:
       mongo:
         condition: service_healthy
       aex-credentials-provider:
+        condition: service_started
+      nats:
         condition: service_started
     networks:
       - aex
@@ -218,6 +235,86 @@ services:
       - "8089:8080"
     networks:
       - aex
+
+  aex-token-bank:
+    image: agent-exchange/aex-token-bank:local
+    container_name: aex-token-bank
+    environment:
+      PORT: "8080"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+    ports:
+      - "8092:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - aex
+
+  redis:
+    image: redis:7-alpine
+    container_name: aex-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - aex
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  nats:
+    image: nats:2-alpine
+    container_name: aex-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--jetstream", "-m", "8222"]
+    networks:
+      - aex
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  aex-certauth:
+    image: agent-exchange/aex-certauth:local
+    container_name: aex-certauth
+    environment:
+      PORT: "8091"
+      ENVIRONMENT: "development"
+      MONGO_URI: "mongodb://root:root@mongo:27017/?authSource=admin"
+      MONGO_DB: "aex"
+      TRUST_BROKER_URL: "http://aex-trust-broker:8080"
+      PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
+      NATS_URL: "nats://nats:4222"
+      IDENTITY_URL: "http://aex-identity:8080"
+    ports:
+      - "8091:8091"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      aex-trust-broker:
+        condition: service_started
+      aex-provider-registry:
+        condition: service_started
+      nats:
+        condition: service_started
+      aex-identity:
+        condition: service_started
+    networks:
+      - aex
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   aex_mongo_data:

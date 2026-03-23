@@ -43,6 +43,10 @@ type TrustRecord struct {
 	DisputesWon         int `json:"disputes_won" bson:"disputes_won"`
 	DisputesLost        int `json:"disputes_lost" bson:"disputes_lost"`
 
+	CertificationBonus float64 `json:"certification_bonus" bson:"certification_bonus"`
+	ActiveCertificates int     `json:"active_certificates" bson:"active_certificates"`
+	ReputationTier     string  `json:"reputation_tier" bson:"reputation_tier"`
+
 	RegisteredAt   time.Time  `json:"registered_at" bson:"registered_at"`
 	LastContractAt *time.Time `json:"last_contract_at,omitempty" bson:"last_contract_at,omitempty"`
 	LastUpdated    time.Time  `json:"last_updated" bson:"last_updated"`

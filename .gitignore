@@ -1,0 +1,31 @@
+# Environment files (contain secrets)
+.env
+*.env
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Claude Code
+.claude/
+
+# Test output
+*.test
+coverage.out
+AP2/

@@ -15,6 +15,7 @@ type Config struct {
 	FirestoreProjectID  string
 	FirestoreCollection string
 	ProviderRegistryURL string
+	NatsURL             string
 }
 
 func Load() (*Config, error) {
@@ -28,6 +29,7 @@ func Load() (*Config, error) {
 		FirestoreProjectID:  getEnv("FIRESTORE_PROJECT_ID", ""),
 		FirestoreCollection: getEnv("FIRESTORE_COLLECTION_WORK", "work_specs"),
 		ProviderRegistryURL: getEnv("PROVIDER_REGISTRY_URL", "http://localhost:8086"),
+		NatsURL:             getEnv("NATS_URL", ""),
 	}
 
 	if cfg.Environment == "production" && cfg.StoreType == "firestore" && cfg.FirestoreProjectID == "" {

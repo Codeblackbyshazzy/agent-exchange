@@ -1,92 +1,104 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// RateLimiter implements in-memory rate limiting using token bucket algorithm
+// RateLimiter implements Redis-backed fixed-window rate limiting.
+// Each tenant gets a counter key in Redis with a TTL equal to the window size.
+// If Redis is unavailable the limiter fails open (allows the request).
 type RateLimiter struct {
-	mu         sync.Mutex
-	buckets    map[string]*bucket
+	rdb        *redis.Client
 	limit      int
-	burstSize  int
 	windowSize time.Duration
 }
 
-type bucket struct {
-	tokens     int
-	lastRefill time.Time
-}
+// NewRateLimiter creates a Redis-backed rate limiter.
+// redisURL should be a valid Redis connection string (e.g. "redis://localhost:6379").
+func NewRateLimiter(redisURL string, limitPerMinute int) *RateLimiter {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Printf("WARN: ratelimit: invalid REDIS_URL %q, rate limiting will fail open: %v", redisURL, err)
+		return &RateLimiter{
+			rdb:        nil,
+			limit:      limitPerMinute,
+			windowSize: time.Minute,
+		}
+	}
 
-func NewRateLimiter(limitPerMinute, burstSize int) *RateLimiter {
-	rl := &RateLimiter{
-		buckets:    make(map[string]*bucket),
+	rdb := redis.NewClient(opts)
+
+	// Quick connectivity check – non-blocking; we just log on failure.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Printf("WARN: ratelimit: cannot reach Redis at %q, rate limiting will fail open until reconnect: %v", redisURL, err)
+	}
+
+	return &RateLimiter{
+		rdb:        rdb,
 		limit:      limitPerMinute,
-		burstSize:  burstSize,
 		windowSize: time.Minute,
 	}
-	// Start cleanup goroutine
-	go rl.cleanup()
-	return rl
 }
 
-func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for key, b := range rl.buckets {
-			if now.Sub(b.lastRefill) > 10*time.Minute {
-				delete(rl.buckets, key)
-			}
-		}
-		rl.mu.Unlock()
-	}
-}
-
+// Allow checks whether a request for the given key (tenant) should be allowed.
+// It returns whether the request is allowed, the number of remaining requests in
+// the current window, and the time at which the window resets.
+//
+// Algorithm: fixed-window using INCR + EXPIRE.
+//   - Key format: "ratelimit:<tenantID>:<windowStart>"
+//   - On the first request in a window the key is created with EXPIRE = windowSize.
+//   - Subsequent requests increment the counter and compare against the limit.
 func (rl *RateLimiter) Allow(key string) (allowed bool, remaining int, resetAt time.Time) {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
 	now := time.Now()
-	b, exists := rl.buckets[key]
+	windowStart := now.Truncate(rl.windowSize)
+	resetAt = windowStart.Add(rl.windowSize)
 
-	if !exists {
-		b = &bucket{
-			tokens:     rl.limit,
-			lastRefill: now,
+	// Fail open when Redis is not configured.
+	if rl.rdb == nil {
+		return true, rl.limit, resetAt
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	redisKey := "ratelimit:" + key + ":" + strconv.FormatInt(windowStart.Unix(), 10)
+
+	count, err := rl.rdb.Incr(ctx, redisKey).Result()
+	if err != nil {
+		log.Printf("WARN: ratelimit: Redis INCR failed for key %q, failing open: %v", redisKey, err)
+		return true, rl.limit, resetAt
+	}
+
+	// Set expiry on the first request for this window.
+	if count == 1 {
+		ttl := time.Until(resetAt) + time.Second // small buffer to avoid premature eviction
+		if err := rl.rdb.Expire(ctx, redisKey, ttl).Err(); err != nil {
+			log.Printf("WARN: ratelimit: Redis EXPIRE failed for key %q: %v", redisKey, err)
 		}
-		rl.buckets[key] = b
 	}
 
-	// Refill tokens based on time elapsed
-	elapsed := now.Sub(b.lastRefill)
-	if elapsed >= rl.windowSize {
-		b.tokens = rl.limit
-		b.lastRefill = now
-	} else {
-		// Partial refill
-		tokensToAdd := int(float64(rl.limit) * (float64(elapsed) / float64(rl.windowSize)))
-		b.tokens = min(b.tokens+tokensToAdd, rl.limit)
-		if tokensToAdd > 0 {
-			b.lastRefill = now
-		}
+	remaining = rl.limit - int(count)
+	if remaining < 0 {
+		remaining = 0
 	}
 
-	resetAt = b.lastRefill.Add(rl.windowSize)
-
-	if b.tokens > 0 {
-		b.tokens--
-		return true, b.tokens, resetAt
+	if int(count) > rl.limit {
+		return false, 0, resetAt
 	}
 
-	return false, 0, resetAt
+	return true, remaining, resetAt
 }
 
+// RateLimit returns an HTTP middleware that enforces per-tenant rate limits.
 func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

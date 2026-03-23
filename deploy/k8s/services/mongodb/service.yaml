@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/part-of: agent-exchange
 spec:
   type: ClusterIP
+  clusterIP: None
   selector:
     app.kubernetes.io/name: mongodb
   ports:

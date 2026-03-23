@@ -14,21 +14,27 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// Create dependencies
 	apiKeyValidator := middleware.NewInMemoryAPIKeyValidator()
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitBurstSize)
+	rateLimiter := middleware.NewRateLimiter(cfg.RedisURL, cfg.RateLimitPerMinute)
 	proxyRouter := proxy.NewRouter(cfg)
 
-	// Health endpoints (no auth required)
+	// Health endpoints (no auth required – needed for K8s probes)
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /ready", readyHandler)
-	mux.HandleFunc("GET /v1/info", infoHandler)
 
 	// OPTIONS preflight handler (no auth required)
 	mux.HandleFunc("OPTIONS /v1/", preflightHandler)
 
+	// Authenticated info endpoint – served directly, not proxied
+	infoHandler := applyMiddleware(http.HandlerFunc(infoHandlerFunc),
+		middleware.RateLimit(rateLimiter),
+		middleware.Auth(apiKeyValidator, cfg.JWTSecret),
+	)
+	mux.Handle("GET /v1/info", infoHandler)
+
 	// API routes with middleware stack
 	apiHandler := applyMiddleware(proxyRouter,
 		middleware.RateLimit(rateLimiter),
-		middleware.Auth(apiKeyValidator),
+		middleware.Auth(apiKeyValidator, cfg.JWTSecret),
 	)
 
 	// Mount API handler for all /v1/* paths
@@ -66,7 +72,7 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 }
 
-func infoHandler(w http.ResponseWriter, r *http.Request) {
+func infoHandlerFunc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{

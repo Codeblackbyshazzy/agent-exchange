@@ -165,6 +165,66 @@ type APIKeyRevokedData struct {
 	Prefix   string `json:"prefix"`
 }
 
+// Certificate Events
+type CertificateRequestedData struct {
+	CertificateID string    `json:"certificate_id"`
+	ProviderID    string    `json:"provider_id"`
+	AgentID       string    `json:"agent_id"`
+	Domain        string    `json:"domain"`
+	RequestedAt   time.Time `json:"requested_at"`
+}
+
+type CertificateIssuedData struct {
+	CertificateID string    `json:"certificate_id"`
+	ProviderID    string    `json:"provider_id"`
+	AgentID       string    `json:"agent_id"`
+	Domain        string    `json:"domain"`
+	IssuedAt      time.Time `json:"issued_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	Fingerprint   string    `json:"fingerprint"`
+}
+
+type CertificateRenewedData struct {
+	CertificateID    string    `json:"certificate_id"`
+	ProviderID       string    `json:"provider_id"`
+	AgentID          string    `json:"agent_id"`
+	PreviousExpiry   time.Time `json:"previous_expiry"`
+	NewExpiry        time.Time `json:"new_expiry"`
+	RenewedAt        time.Time `json:"renewed_at"`
+	NewFingerprint   string    `json:"new_fingerprint"`
+}
+
+type CertificateRevokedData struct {
+	CertificateID string    `json:"certificate_id"`
+	ProviderID    string    `json:"provider_id"`
+	AgentID       string    `json:"agent_id"`
+	Reason        string    `json:"reason"`
+	RevokedAt     time.Time `json:"revoked_at"`
+}
+
+type CertificateExpiredData struct {
+	CertificateID string    `json:"certificate_id"`
+	ProviderID    string    `json:"provider_id"`
+	AgentID       string    `json:"agent_id"`
+	ExpiredAt     time.Time `json:"expired_at"`
+}
+
+type CRLUpdatedData struct {
+	CRLID       string    `json:"crl_id"`
+	EntriesAdded int      `json:"entries_added"`
+	TotalEntries int      `json:"total_entries"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ReputationUpdatedData struct {
+	ProviderID    string  `json:"provider_id"`
+	AgentID       string  `json:"agent_id"`
+	PreviousScore float64 `json:"previous_score"`
+	NewScore      float64 `json:"new_score"`
+	Reason        string  `json:"reason"`
+	Domain        string  `json:"domain"`
+}
+
 // Provider Events
 type ProviderRegisteredData struct {
 	ProviderID   string    `json:"provider_id"`
@@ -215,6 +275,15 @@ const (
 	EventTenantCreated   = "tenant.created"
 	EventTenantSuspended = "tenant.suspended"
 	EventAPIKeyRevoked   = "apikey.revoked"
+
+	// Certificate events
+	EventCertificateRequested = "certificate.requested"
+	EventCertificateIssued    = "certificate.issued"
+	EventCertificateRenewed   = "certificate.renewed"
+	EventCertificateRevoked   = "certificate.revoked"
+	EventCertificateExpired   = "certificate.expired"
+	EventCRLUpdated           = "crl.updated"
+	EventReputationUpdated    = "reputation.updated"
 
 	// Provider events
 	EventProviderRegistered    = "provider.registered"

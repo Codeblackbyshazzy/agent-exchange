@@ -465,7 +465,23 @@ func (s *Service) HandleSearchProviders(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	results, err := s.store.SearchBySkillTags(ctx, skillTags, minTrust, limit)
+	// Parse certification filters
+	var filters store.SearchFilters
+	if r.URL.Query().Get("require_certification") == "true" {
+		filters.RequireCertification = true
+	}
+	if mrt := strings.TrimSpace(r.URL.Query().Get("min_reputation_tier")); mrt != "" {
+		filters.MinReputationTier = mrt
+	}
+	if rc := strings.TrimSpace(r.URL.Query().Get("required_capabilities")); rc != "" {
+		caps := strings.Split(rc, ",")
+		for i := range caps {
+			caps[i] = strings.TrimSpace(caps[i])
+		}
+		filters.RequiredCapabilities = caps
+	}
+
+	results, err := s.store.SearchBySkillTags(ctx, skillTags, minTrust, limit, filters)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

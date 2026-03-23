@@ -10,16 +10,24 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	aexnats "github.com/parlakisik/agent-exchange/internal/nats"
 )
 
-// Publisher handles event publishing via HTTP (Phase A) or Pub/Sub (future)
+// Publisher handles event publishing via NATS JetStream, with optional HTTP
+// webhook fallback. When a NATS client is configured, events are published to
+// JetStream using the event type as the NATS subject and the IdempotencyKey
+// for server-side deduplication. If no NATS client is present the publisher
+// falls back to logging only (useful for tests and local development).
 type Publisher struct {
 	source     string
+	natsClient *aexnats.Client
 	httpClient *http.Client
 	endpoints  map[string]string // eventType -> webhook URL
 }
 
-// NewPublisher creates a new event publisher
+// NewPublisher creates a new event publisher that logs events only. Use
+// WithNATS to attach a JetStream backend.
 func NewPublisher(source string) *Publisher {
 	return &Publisher{
 		source: source,
@@ -30,12 +38,37 @@ func NewPublisher(source string) *Publisher {
 	}
 }
 
-// RegisterEndpoint registers a webhook endpoint for an event type
+// NewPublisherWithNATS creates a publisher that publishes events to NATS
+// JetStream. HTTP webhook endpoints can still be registered as a secondary
+// delivery mechanism.
+func NewPublisherWithNATS(source string, nc *aexnats.Client) *Publisher {
+	return &Publisher{
+		source:     source,
+		natsClient: nc,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+		endpoints: make(map[string]string),
+	}
+}
+
+// WithNATS attaches a NATS client to an existing publisher.
+func (p *Publisher) WithNATS(nc *aexnats.Client) {
+	p.natsClient = nc
+}
+
+// RegisterEndpoint registers a webhook endpoint for an event type.
 func (p *Publisher) RegisterEndpoint(eventType, webhookURL string) {
 	p.endpoints[eventType] = webhookURL
 }
 
-// Publish publishes an event (HTTP webhook for now, Pub/Sub later)
+// Publish publishes an event. When a NATS client is configured the event
+// envelope is published to JetStream with the IdempotencyKey set as the
+// Nats-Msg-Id header for deduplication. The event type is mapped directly to
+// a NATS subject (e.g. "work.submitted" -> subject "work.submitted").
+//
+// If a webhook endpoint is registered for the event type, the event is also
+// delivered via HTTP POST as a secondary channel.
 func (p *Publisher) Publish(ctx context.Context, eventType string, data map[string]any) error {
 	envelope := Envelope{
 		EventID:        generateEventID(),
@@ -51,19 +84,48 @@ func (p *Publisher) Publish(ctx context.Context, eventType string, data map[stri
 		envelope.TenantID = tenantID
 	}
 
-	// For now, just log the event (HTTP webhooks can be added later)
-	slog.InfoContext(ctx, "event_published",
-		"event_id", envelope.EventID,
-		"event_type", envelope.EventType,
-		"source", envelope.Source,
-	)
+	// Publish to NATS JetStream when a client is configured.
+	if p.natsClient != nil {
+		subject := aexnats.SubjectForEvent(eventType)
 
-	// If webhook endpoint registered, send HTTP POST
-	if webhookURL, ok := p.endpoints[eventType]; ok {
-		return p.sendWebhook(ctx, webhookURL, envelope)
+		if err := p.natsClient.Publish(ctx, subject, envelope.IdempotencyKey, envelope); err != nil {
+			slog.ErrorContext(ctx, "nats_publish_failed",
+				"event_id", envelope.EventID,
+				"event_type", envelope.EventType,
+				"subject", subject,
+				"error", err,
+			)
+			return fmt.Errorf("publish event %s to nats: %w", eventType, err)
+		}
+
+		slog.InfoContext(ctx, "event_published",
+			"event_id", envelope.EventID,
+			"event_type", envelope.EventType,
+			"source", envelope.Source,
+			"subject", subject,
+			"transport", "nats",
+		)
+	} else {
+		// Fallback: log only (no NATS client configured).
+		slog.InfoContext(ctx, "event_published",
+			"event_id", envelope.EventID,
+			"event_type", envelope.EventType,
+			"source", envelope.Source,
+			"transport", "log",
+		)
 	}
 
-	// In the future, this will publish to Pub/Sub
+	// If webhook endpoint registered, also send HTTP POST.
+	if webhookURL, ok := p.endpoints[eventType]; ok {
+		if err := p.sendWebhook(ctx, webhookURL, envelope); err != nil {
+			// Log but don't fail; webhook delivery is best-effort.
+			slog.WarnContext(ctx, "webhook_delivery_error",
+				"event_type", eventType,
+				"error", err,
+			)
+		}
+	}
+
 	return nil
 }
 

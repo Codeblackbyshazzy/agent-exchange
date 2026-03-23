@@ -160,6 +160,7 @@ func (s *Service) recalculate(ctx context.Context, providerID string) (model.Tru
 		tenureMonths = 5
 	}
 	mod += float64(tenureMonths) * 0.02
+	mod += rec.CertificationBonus
 
 	final := clamp01(base + mod)
 	rec.BaseScore = base

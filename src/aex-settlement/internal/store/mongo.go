@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-settlement/internal/model"
@@ -12,6 +13,7 @@ import (
 )
 
 type MongoSettlementStore struct {
+	client       *mongo.Client
 	executions   *mongo.Collection
 	ledger       *mongo.Collection
 	balances     *mongo.Collection
@@ -21,6 +23,7 @@ type MongoSettlementStore struct {
 func NewMongoSettlementStore(client *mongo.Client, dbName string) *MongoSettlementStore {
 	db := client.Database(dbName)
 	return &MongoSettlementStore{
+		client:       client,
 		executions:   db.Collection("executions"),
 		ledger:       db.Collection("ledger_entries"),
 		balances:     db.Collection("tenant_balances"),
@@ -171,7 +174,7 @@ func (s *MongoSettlementStore) GetBalance(ctx context.Context, tenantID string) 
 			// Return zero balance if not found
 			return model.TenantBalance{
 				TenantID:    tenantID,
-				Balance:     "0",
+				Balance:     0,
 				Currency:    "USD",
 				LastUpdated: time.Now().UTC(),
 			}, nil
@@ -191,6 +194,50 @@ func (s *MongoSettlementStore) UpdateBalance(ctx context.Context, balance model.
 		balance,
 		options.Replace().SetUpsert(true),
 	)
+	return err
+}
+
+// IncrementBalance atomically increments the balance for a tenant using MongoDB $inc.
+// This avoids the read-modify-write race condition. Upserts if the document does not exist.
+// Returns the updated TenantBalance after the increment.
+func (s *MongoSettlementStore) IncrementBalance(ctx context.Context, tenantID string, deltaCents int64, currency string) (model.TenantBalance, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC()
+	filter := bson.M{"_id": tenantID}
+	update := bson.M{
+		"$inc": bson.M{"balance": deltaCents},
+		"$set": bson.M{
+			"currency":     currency,
+			"last_updated": now,
+		},
+		"$setOnInsert": bson.M{"_id": tenantID},
+	}
+	opts := options.FindOneAndUpdate().
+		SetUpsert(true).
+		SetReturnDocument(options.After)
+
+	var updated model.TenantBalance
+	err := s.balances.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
+	if err != nil {
+		return model.TenantBalance{}, fmt.Errorf("increment balance: %w", err)
+	}
+	return updated, nil
+}
+
+// WithTransaction executes fn within a MongoDB session transaction.
+// All store operations using the returned context participate in the transaction.
+func (s *MongoSettlementStore) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	session, err := s.client.StartSession()
+	if err != nil {
+		return fmt.Errorf("start session: %w", err)
+	}
+	defer session.EndSession(ctx)
+
+	_, err = session.WithTransaction(ctx, func(sessCtx mongo.SessionContext) (interface{}, error) {
+		return nil, fn(sessCtx)
+	})
 	return err
 }
 

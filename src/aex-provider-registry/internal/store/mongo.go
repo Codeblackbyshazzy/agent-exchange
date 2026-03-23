@@ -292,7 +292,7 @@ func (s *MongoStore) IndexSkills(ctx context.Context, providerID string, skills 
 	return err
 }
 
-func (s *MongoStore) SearchBySkillTags(ctx context.Context, tags []string, minTrust float64, limit int) ([]model.ProviderSearchResult, error) {
+func (s *MongoStore) SearchBySkillTags(ctx context.Context, tags []string, minTrust float64, limit int, filters SearchFilters) ([]model.ProviderSearchResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -385,6 +385,9 @@ func (s *MongoStore) SearchBySkillTags(ctx context.Context, tags []string, minTr
 		}
 	}
 
+	// Determine minimum reputation tier rank for filtering
+	minTierRank := model.ReputationTierRank(filters.MinReputationTier)
+
 	// Build results
 	results := make([]model.ProviderSearchResult, 0)
 	for providerID, skills := range providerSkills {
@@ -394,6 +397,34 @@ func (s *MongoStore) SearchBySkillTags(ctx context.Context, tags []string, minTr
 		}
 		if p.TrustScore < minTrust {
 			continue
+		}
+
+		// Apply certification filter: only include providers with active certificates
+		if filters.RequireCertification && p.ActiveCertificates <= 0 {
+			continue
+		}
+
+		// Apply reputation tier filter
+		if filters.MinReputationTier != "" && model.ReputationTierRank(p.ReputationTier) < minTierRank {
+			continue
+		}
+
+		// Apply required capabilities filter: provider must have all required capabilities
+		if len(filters.RequiredCapabilities) > 0 {
+			capSet := make(map[string]bool, len(p.Capabilities))
+			for _, c := range p.Capabilities {
+				capSet[c] = true
+			}
+			missingCap := false
+			for _, req := range filters.RequiredCapabilities {
+				if !capSet[req] {
+					missingCap = true
+					break
+				}
+			}
+			if missingCap {
+				continue
+			}
 		}
 
 		matchedTags := make([]string, 0)

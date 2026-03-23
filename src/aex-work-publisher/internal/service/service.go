@@ -31,11 +31,14 @@ type Service struct {
 	events           *events.Publisher
 }
 
-func New(st store.WorkStore, providerRegistryURL string) *Service {
+func New(st store.WorkStore, providerRegistryURL string, pub *events.Publisher) *Service {
+	if pub == nil {
+		pub = events.NewPublisher("aex-work-publisher")
+	}
 	return &Service{
 		store:            st,
 		providerRegistry: clients.NewProviderRegistryClient(providerRegistryURL),
-		events:           events.NewPublisher("aex-work-publisher"),
+		events:           pub,
 	}
 }
 

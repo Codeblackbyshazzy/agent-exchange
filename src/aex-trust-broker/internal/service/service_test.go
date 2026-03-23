@@ -374,13 +374,14 @@ func TestTrustScoreModifiers(t *testing.T) {
 func TestTrustScoreIntegration(t *testing.T) {
 	// Test complete trust score calculation with base + modifiers
 	tests := []struct {
-		name             string
-		outcomes         []model.ContractOutcome
-		identityVerified bool
-		endpointVerified bool
-		tenureMonths     int
-		wantMinScore     float64
-		wantMaxScore     float64
+		name               string
+		outcomes           []model.ContractOutcome
+		identityVerified   bool
+		endpointVerified   bool
+		tenureMonths       int
+		certificationBonus float64
+		wantMinScore       float64
+		wantMaxScore       float64
 	}{
 		{
 			name: "perfect provider",
@@ -418,6 +419,33 @@ func TestTrustScoreIntegration(t *testing.T) {
 			wantMinScore:     0.66, // 0.5 base + 0.16 modifiers
 			wantMaxScore:     0.67,
 		},
+		{
+			name: "certification bonus boosts score",
+			outcomes: []model.ContractOutcome{
+				{Outcome: model.OutcomeSuccess},
+				{Outcome: model.OutcomeFailureProvider},
+			},
+			identityVerified:   false,
+			endpointVerified:   false,
+			tenureMonths:       0,
+			certificationBonus: 0.15,
+			wantMinScore:       0.65, // 0.5 base + 0.15 cert bonus
+			wantMaxScore:       0.65,
+		},
+		{
+			name: "certification bonus clamped at 1.0",
+			outcomes: []model.ContractOutcome{
+				{Outcome: model.OutcomeSuccess},
+				{Outcome: model.OutcomeSuccess},
+				{Outcome: model.OutcomeSuccess},
+			},
+			identityVerified:   true,
+			endpointVerified:   true,
+			tenureMonths:       5,
+			certificationBonus: 0.20,
+			wantMinScore:       1.0,
+			wantMaxScore:       1.0, // Clamped at 1.0
+		},
 	}
 
 	for _, tt := range tests {
@@ -435,6 +463,7 @@ func TestTrustScoreIntegration(t *testing.T) {
 				tenureMonths = 5
 			}
 			modifier += float64(tenureMonths) * 0.02
+			modifier += tt.certificationBonus
 
 			finalScore := clamp01(base + modifier)
 

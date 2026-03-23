@@ -13,6 +13,9 @@ import (
 	"github.com/parlakisik/agent-exchange/aex-work-publisher/internal/httpapi"
 	"github.com/parlakisik/agent-exchange/aex-work-publisher/internal/service"
 	"github.com/parlakisik/agent-exchange/aex-work-publisher/internal/store"
+	"github.com/parlakisik/agent-exchange/internal/events"
+	aexnats "github.com/parlakisik/agent-exchange/internal/nats"
+	"github.com/parlakisik/agent-exchange/internal/telemetry"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -25,15 +28,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup structured logging
+	// Setup structured logging with trace correlation
 	logLevel := slog.LevelInfo
 	if cfg.Environment == "development" {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	logHandler := telemetry.TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
+
+	// Initialize OpenTelemetry tracing
+	otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
+	tracerShutdown, err := telemetry.InitTracer(context.Background(), "aex-work-publisher", otlpEndpoint)
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := tracerShutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown tracer", "error", err)
+		}
+	}()
+
+	// Initialize Prometheus metrics
+	metricsHandler, err := telemetry.InitMeter("aex-work-publisher")
+	if err != nil {
+		slog.Error("failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
 
 	slog.Info("starting aex-work-publisher",
 		"environment", cfg.Environment,
@@ -94,16 +118,44 @@ func main() {
 		}()
 	}
 
+	// Initialize NATS and event publisher
+	publisher := events.NewPublisher("aex-work-publisher")
+	if cfg.NatsURL != "" {
+		natsCfg := aexnats.DefaultConfig()
+		natsCfg.URL = cfg.NatsURL
+		natsCfg.Name = "aex-work-publisher"
+		natsClient, natsErr := aexnats.Connect(natsCfg)
+		if natsErr != nil {
+			slog.Warn("failed to connect to NATS, events will be log-only", "error", natsErr)
+		} else {
+			if err := natsClient.EnsureStreams(); err != nil {
+				slog.Warn("failed to ensure NATS streams", "error", err)
+			}
+			publisher.WithNATS(natsClient)
+			slog.Info("NATS connected", "url", cfg.NatsURL)
+			defer func() {
+				if err := natsClient.Close(); err != nil {
+					slog.Error("failed to close NATS", "error", err)
+				}
+			}()
+		}
+	}
+
 	// Initialize service
-	svc := service.New(workStore, cfg.ProviderRegistryURL)
+	svc := service.New(workStore, cfg.ProviderRegistryURL, publisher)
 
 	// Setup HTTP router
-	router := httpapi.NewRouter(svc)
+	mux := http.NewServeMux()
+	mux.Handle("/", httpapi.NewRouter(svc))
+	mux.Handle("GET /metrics", metricsHandler)
+
+	// Wrap with OpenTelemetry tracing middleware
+	handler := telemetry.HTTPMiddleware("aex-work-publisher")(mux)
 
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      router,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

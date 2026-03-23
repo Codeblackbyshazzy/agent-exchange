@@ -6,6 +6,9 @@ RUN apk add --no-cache git
 
 WORKDIR /build
 
+# Copy internal modules first
+COPY internal/telemetry internal/telemetry
+
 # Copy service files
 COPY aex-trust-broker aex-trust-broker
 

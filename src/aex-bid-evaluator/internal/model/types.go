@@ -51,11 +51,12 @@ type DisqualifiedBid struct {
 }
 
 type BidScore struct {
-	Price      float64 `json:"price"`
-	Trust      float64 `json:"trust"`
-	Confidence float64 `json:"confidence"`
-	MVPSample  float64 `json:"mvp_sample"`
-	SLA        float64 `json:"sla"`
+	Price         float64 `json:"price"`
+	Trust         float64 `json:"trust"`
+	Confidence    float64 `json:"confidence"`
+	MVPSample     float64 `json:"mvp_sample"`
+	SLA           float64 `json:"sla"`
+	Certification float64 `json:"certification"`
 }
 
 type RankedBid struct {

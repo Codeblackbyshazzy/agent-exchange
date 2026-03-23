@@ -11,6 +11,7 @@ type Config struct {
 
 	BidGatewayURL  string // required
 	TrustBrokerURL string // optional
+	CertAuthURL    string // optional
 
 	// MongoDB (optional persistence)
 	MongoURI        string
@@ -27,6 +28,7 @@ func Load() Config {
 		Port:            getenv("PORT", "8080"),
 		BidGatewayURL:   strings.TrimRight(strings.TrimSpace(os.Getenv("BID_GATEWAY_URL")), "/"),
 		TrustBrokerURL:  strings.TrimRight(strings.TrimSpace(os.Getenv("TRUST_BROKER_URL")), "/"),
+		CertAuthURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("CERTAUTH_URL")), "/"),
 		MongoURI:        strings.TrimSpace(os.Getenv("MONGO_URI")),
 		MongoDatabase:   getenv("MONGO_DB", "aex"),
 		MongoCollection: getenv("MONGO_COLLECTION_EVALUATIONS", "bid_evaluations"),

@@ -6,6 +6,13 @@ import (
 	"github.com/parlakisik/agent-exchange/aex-provider-registry/internal/model"
 )
 
+// SearchFilters contains optional certification and capability filters for provider search.
+type SearchFilters struct {
+	RequireCertification bool
+	MinReputationTier    string
+	RequiredCapabilities []string
+}
+
 type Store interface {
 	CreateProvider(ctx context.Context, p model.Provider) error
 	GetProvider(ctx context.Context, providerID string) (*model.Provider, error)
@@ -22,5 +29,5 @@ type Store interface {
 	SaveAgentCard(ctx context.Context, providerID string, card model.AgentCard, a2aEndpoint string) error
 	GetProviderWithA2A(ctx context.Context, providerID string) (*model.ProviderWithA2A, error)
 	IndexSkills(ctx context.Context, providerID string, skills []model.SkillIndex) error
-	SearchBySkillTags(ctx context.Context, tags []string, minTrust float64, limit int) ([]model.ProviderSearchResult, error)
+	SearchBySkillTags(ctx context.Context, tags []string, minTrust float64, limit int, filters SearchFilters) ([]model.ProviderSearchResult, error)
 }

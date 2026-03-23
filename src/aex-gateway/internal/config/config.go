@@ -19,6 +19,7 @@ type Config struct {
 	ContractEngineURL   string
 	TrustBrokerURL      string
 	IdentityURL         string
+	CertAuthURL         string
 
 	// Rate limiting
 	RateLimitPerMinute int
@@ -27,6 +28,12 @@ type Config struct {
 	// Timeouts
 	RequestTimeout time.Duration
 	ProxyTimeout   time.Duration
+
+	// Redis
+	RedisURL string
+
+	// Auth
+	JWTSecret string
 
 	// CORS
 	AllowedOrigins []string
@@ -47,10 +54,13 @@ func Load() *Config {
 		ContractEngineURL:   getEnv("CONTRACT_ENGINE_URL", "http://localhost:8084"),
 		TrustBrokerURL:      getEnv("TRUST_BROKER_URL", "http://localhost:8086"),
 		IdentityURL:         getEnv("IDENTITY_URL", "http://localhost:8087"),
+		CertAuthURL:         getEnv("CERTAUTH_URL", "http://localhost:8089"),
 		RateLimitPerMinute:  getEnvInt("RATE_LIMIT_PER_MINUTE", 1000),
 		RateLimitBurstSize:  getEnvInt("RATE_LIMIT_BURST_SIZE", 50),
 		RequestTimeout:      time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 30)) * time.Second,
 		ProxyTimeout:        time.Duration(getEnvInt("PROXY_TIMEOUT_SECONDS", 25)) * time.Second,
+		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:           getEnv("JWT_SECRET", ""),
 		AllowedOrigins:      []string{"*"},
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 	}

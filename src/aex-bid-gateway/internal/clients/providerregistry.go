@@ -2,25 +2,23 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
+
+	"github.com/parlakisik/agent-exchange/internal/httpclient"
 )
 
 // ProviderRegistryClient validates provider API keys against the provider registry
 type ProviderRegistryClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL string
+	client  *httpclient.Client
 }
 
 // NewProviderRegistryClient creates a new provider registry client
 func NewProviderRegistryClient(baseURL string) *ProviderRegistryClient {
 	return &ProviderRegistryClient{
 		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
+		client:  httpclient.NewClient("provider-registry", 5*time.Second),
 	}
 }
 
@@ -33,25 +31,14 @@ type ValidateAPIKeyResponse struct {
 
 // ValidateAPIKey validates an API key against the provider registry
 func (c *ProviderRegistryClient) ValidateAPIKey(ctx context.Context, apiKey string) (string, error) {
-	url := fmt.Sprintf("%s/internal/v1/providers/validate-key?api_key=%s", c.baseURL, apiKey)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("invalid API key: status %d", resp.StatusCode)
-	}
-
 	var result ValidateAPIKeyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+
+	err := httpclient.NewRequest("GET", c.baseURL).
+		Path("/internal/v1/providers/validate-key").
+		Query("api_key", apiKey).
+		Context(ctx).
+		ExecuteJSON(c.client, &result)
+	if err != nil {
 		return "", err
 	}
 

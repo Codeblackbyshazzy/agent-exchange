@@ -9,7 +9,8 @@ WORKDIR /build
 # Copy internal modules first
 COPY internal/events internal/events
 COPY internal/httpclient internal/httpclient
-COPY internal/testutil internal/testutil
+COPY internal/nats internal/nats
+COPY internal/telemetry internal/telemetry
 
 # Copy service files
 COPY aex-work-publisher aex-work-publisher
