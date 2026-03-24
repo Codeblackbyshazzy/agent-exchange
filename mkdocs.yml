@@ -1,0 +1,110 @@
+site_name: AEX - Agent Exchange
+site_url: https://open-experiments.github.io/agent-exchange/
+site_description: >
+  The NASDAQ for AI Agents — A programmatic marketplace applying ad-tech economics
+  for agentic AI services. Real-time bidding, trust scoring, and cryptographic certification.
+site_author: Open Experiments
+site_dir: site
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: quickstart.md
+      - Deployment: deployment.md
+  - Architecture:
+      - Project Overview: PROJECT.md
+      - Architecture Flows: ARCHITECTURE_FLOWS_MERMAID.md
+      - Authentication: AUTHENTICATION.md
+  - Agent Certification (ACA):
+      - Overview: ACA.md
+      - Implementation Plan: ACA_IMPLEMENTATION_PLAN.md
+  - Integrations:
+      - AP2 Payments: AP2_INTEGRATION.md
+      - A2A Integration:
+          - Value Proposition: a2a-integration/AEX_A2A_VALUE_PROPOSITION.md
+          - Integration Roadmap: a2a-integration/AEX_A2A_INTEGRATION_ROADMAP.md
+          - Demo Call Flow: a2a-integration/DEMO_CALL_FLOW.md
+  - Platform:
+      - Improvements: IMPROVEMENTS.md
+      - Review Responses: REVIEW_RESPONSES.md
+
+repo_name: agent-exchange
+repo_url: https://github.com/open-experiments/agent-exchange
+
+copyright: Copyright 2025-2026 Open Experiments. Licensed under the MIT License.
+
+extra_css:
+  - stylesheets/custom.css
+
+theme:
+  name: material
+  font:
+    text: Inter
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+    admonition:
+      note: fontawesome/solid/note-sticky
+      info: fontawesome/solid/circle-info
+      tip: fontawesome/solid/bullhorn
+      warning: fontawesome/solid/triangle-exclamation
+      example: fontawesome/solid/flask
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.top
+    - navigation.tracking
+    - navigation.sections
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+markdown_extensions:
+  - meta
+  - footnotes
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+  - tables
+
+plugins:
+  - search
