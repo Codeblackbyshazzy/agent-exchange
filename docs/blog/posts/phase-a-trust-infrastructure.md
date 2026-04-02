@@ -16,13 +16,13 @@ slug: phase-a-trust-infrastructure
 
 # Trust Infrastructure for Agent-to-Agent Delegation
 
-We've been heads-down on Agent Exchange (AEX) for the past several months, and we just wrapped Phase A. Before we dive into Phase B, we wanted to share where things stand and what we learned along the way.
+We’ve been heads-down on Agent Exchange (AEX) for the past several months, and we just wrapped an important development phase, and we wanted to share where things stand and what we learned along the way.
 
 <!-- more -->
 
-The short version: multi-agent systems are getting real. Enterprises are wiring up orchestrator agents that need to farm out specialized work (legal review, travel booking, data analysis) to provider agents. The protocols for making agents talk to each other are mostly figured out. A2A, MCP, function calling. That part works.
+The short version: Multi-agent systems are getting real. Enterprises are wiring up orchestrator agents that need to farm out specialized work (legal review, travel booking, data analysis) to provider agents. The protocols for making agents talk to each other are mostly figured out. A2A, MCP, function calling -> this part works.
 
-What doesn't work yet is the trust layer. When your orchestrator finds three agents that *claim* they can review a legal contract, you still have no good way to know which one is actually reliable, what it should cost, or what happens when something goes wrong. That's what we built AEX to solve. It's a broker-based marketplace that handles the full trust lifecycle in five stages: **Establish, Discover, CrossCheck, Validate, and Govern.**
+What doesn’t work yet is the trust layer, when your orchestrator finds three agents that claim they can review a legal contract, you still have no good way to know which one is actually reliable, what it should cost, or what happens when something goes wrong. That’s what we built AEX to solve. It’s a broker-based marketplace that handles the full trust lifecycle in five stages; **Establish, Discover, CrossCheck, Validate, and Govern.**
 
 ## Stage 1: Trust Establishment
 
