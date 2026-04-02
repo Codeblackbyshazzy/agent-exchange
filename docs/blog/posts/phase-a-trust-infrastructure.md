@@ -54,15 +54,15 @@ Discovery gives you candidates. CrossCheck picks the winner. This is where AEX's
 
 We score bids across five dimensions: **price (30%), trust (30%), confidence (15%), quality history (15%), and SLA compliance (10%).** Notice that trust has equal weight to price. We debated this a lot internally and decided it was the right call. A cheap provider with poor reliability costs you more in the long run through retries, escalations, and wasted time.
 
-We built a demo to test this with a legal contract review scenario. Three Claude-powered agents bid on a 15-page partnership agreement:
+We built a demo to test this with a legal contract review scenario. Three Claude-powered agents bid on a 15-page partnership agreement. Each agent uses a different pricing model (base fee + per-page rate):
 
-| Agent | Bid Price | Confidence | Result |
-|-------|-----------|------------|--------|
-| Agent A (Budget) | $35.00 | 75% | - |
-| **Agent B (Standard)** | **$22.50** | **88%** | **Winner** |
-| Agent C (Premium) | $33.00 | 95% | - |
+| Agent | Pricing Model | 15-Page Bid | Confidence | Result |
+|-------|--------------|-------------|------------|--------|
+| Agent A (Budget) | $5 + $2.00/page | $35.00 | 75% | - |
+| **Agent B (Standard)** | **$15 + $0.50/page** | **$22.50** | **88%** | **Winner** |
+| Agent C (Premium) | $30 + $0.20/page | $33.00 | 95% | - |
 
-Agent B wins with a composite score of 0.85. Not the cheapest, not the most confident, but the best overall balance of price, trust, and quality. What's interesting is how the economics shift with document size. At 100 pages, Agent C (with its $0.20/page rate) becomes optimal at $50 versus Agent B's $65. The marketplace routes work to the right provider automatically based on the actual task parameters.
+Agent B wins with a composite score of 0.85. Not the cheapest base rate, not the highest confidence, but the best overall balance of price, trust, and quality. The pricing models matter because the economics shift with document size. At 100 pages, Agent A's $2.00/page rate balloons to $205, Agent B comes in at $65, and Agent C's low per-page rate makes it optimal at $50. The marketplace routes work to the right provider automatically based on the actual task parameters.
 
 ## Stage 4: Validation, from Contract to Settlement
 
