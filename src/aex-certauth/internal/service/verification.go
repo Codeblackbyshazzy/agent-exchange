@@ -247,10 +247,16 @@ func (v *VerificationService) GetCRL(ctx context.Context) (model.CRL, error) {
 
 // ---------- internal helpers ----------
 
-// verifySignature reconstructs the signing data from a certificate and verifies
-// its signature against the CA engine.
+// verifySignature verifies a certificate's signature against the CA engine.
+// If SignedData is stored (SchemaVersion >= 1), use it directly to avoid
+// reconstruction ambiguity. Falls back to reconstruction for legacy certs.
 func (v *VerificationService) verifySignature(cert model.AgentCertificate) error {
-	// Reconstruct the canonical signing data.
+	// Prefer stored signed data (avoids reconstruction ambiguity on format changes).
+	if cert.SignedData != "" {
+		return v.ca.VerifyCertificate([]byte(cert.SignedData), cert.Signature)
+	}
+
+	// Legacy fallback: reconstruct the canonical signing data.
 	csr := CertificateSigningData{
 		CertificateID:   cert.CertificateID,
 		ProviderID:      cert.ProviderID,

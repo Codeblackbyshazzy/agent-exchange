@@ -161,8 +161,9 @@ func (s *CertificateService) ApproveCertificateRequest(ctx context.Context, requ
 		NotAfter:        notAfter,
 	}
 
-	// Sign with the CA engine.
-	_, signature, err := s.ca.SignCertificate(csr)
+	// Sign with the CA engine. Store the canonical signed bytes to avoid
+	// reconstruction ambiguity if the signing format changes in the future.
+	signedBytes, signature, err := s.ca.SignCertificate(csr)
 	if err != nil {
 		return model.AgentCertificate{}, fmt.Errorf("sign certificate: %w", err)
 	}
@@ -181,6 +182,8 @@ func (s *CertificateService) ApproveCertificateRequest(ctx context.Context, requ
 		PublicKeyPEM:    certReq.PublicKeyPEM,
 		SignatureAlg:    "ECDSA-P256-SHA256",
 		Signature:       signature,
+		SignedData:      string(signedBytes),
+		SchemaVersion:   1,
 		IssuerID:        "aex-certauth",
 		NotBefore:       notBefore,
 		NotAfter:        notAfter,
@@ -295,7 +298,7 @@ func (s *CertificateService) RenewCertificate(ctx context.Context, certID string
 		NotAfter:        notAfter,
 	}
 
-	_, signature, err := s.ca.SignCertificate(csr)
+	signedBytes, signature, err := s.ca.SignCertificate(csr)
 	if err != nil {
 		return model.AgentCertificate{}, fmt.Errorf("sign renewed certificate: %w", err)
 	}
@@ -313,6 +316,8 @@ func (s *CertificateService) RenewCertificate(ctx context.Context, certID string
 		PublicKeyPEM:    existing.PublicKeyPEM,
 		SignatureAlg:    "ECDSA-P256-SHA256",
 		Signature:       signature,
+		SignedData:      string(signedBytes),
+		SchemaVersion:   1,
 		IssuerID:        "aex-certauth",
 		NotBefore:       notBefore,
 		NotAfter:        notAfter,
