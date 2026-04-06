@@ -45,56 +45,60 @@ func (d StreamDef) Config() *nats.StreamConfig {
 }
 
 // AllStreams returns the full set of AEX JetStream stream definitions.
-func AllStreams() []StreamDef {
+// replicas sets the R-factor for all streams (1 for dev, 3 for production).
+func AllStreams(replicas int) []StreamDef {
+	if replicas < 1 {
+		replicas = 1
+	}
 	return []StreamDef{
 		{
 			Name:        "WORK",
 			Subjects:    []string{"work.>"},
 			Description: "Work lifecycle events (submitted, bid_window_closed, cancelled)",
 			MaxAge:      30 * 24 * time.Hour, // 30 days
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "BID",
 			Subjects:    []string{"bid.>", "bids.>"},
 			Description: "Bid lifecycle events (submitted, evaluated)",
 			MaxAge:      30 * 24 * time.Hour,
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "CONTRACT",
 			Subjects:    []string{"contract.>"},
 			Description: "Contract lifecycle events (awarded, completed, failed)",
 			MaxAge:      90 * 24 * time.Hour, // 90 days
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "SETTLEMENT",
 			Subjects:    []string{"settlement.>"},
 			Description: "Settlement events (completed)",
 			MaxAge:      90 * 24 * time.Hour,
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "TRUST",
 			Subjects:    []string{"trust.>", "reputation.>"},
 			Description: "Trust and reputation events (score_updated, tier_changed, reputation.updated)",
 			MaxAge:      90 * 24 * time.Hour,
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "CERTIFICATE",
 			Subjects:    []string{"certificate.>", "crl.>"},
 			Description: "Certificate lifecycle events (requested, issued, renewed, revoked, expired, crl.updated)",
 			MaxAge:      365 * 24 * time.Hour, // 1 year
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 		{
 			Name:        "DEADLETTER",
 			Subjects:    []string{"deadletter.>"},
 			Description: "Dead-letter stream for messages that exceeded max delivery attempts",
 			MaxAge:      90 * 24 * time.Hour,
-			Replicas:    1,
+			Replicas:    replicas,
 		},
 	}
 }
