@@ -177,6 +177,12 @@ func (s *Service) HandleProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		http.Error(w, "contract expired", http.StatusGone)
+		return
+	}
 	c.ExecutionUpdates = append(c.ExecutionUpdates, model.ExecutionUpdate{
 		Status:    req.Status,
 		Percent:   req.Percent,
@@ -227,6 +233,12 @@ func (s *Service) HandleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		http.Error(w, "contract expired", http.StatusGone)
+		return
+	}
 	c.Status = model.ContractStatusCompleted
 	c.CompletedAt = &now
 	c.Outcome = &model.OutcomeReport{
@@ -281,6 +293,12 @@ func (s *Service) HandleFail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		http.Error(w, "contract expired", http.StatusGone)
+		return
+	}
 	c.Status = model.ContractStatusFailed
 	c.FailedAt = &now
 	c.FailureReason = &req.Reason

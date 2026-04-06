@@ -6,8 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -163,6 +166,9 @@ func validateBid(now time.Time, bid model.BidPacket) error {
 	if bid.WorkID == "" || bid.Price <= 0 || bid.A2AEndpoint == "" {
 		return errors.New("missing required fields")
 	}
+	if err := validateEndpointURL(bid.A2AEndpoint); err != nil {
+		return fmt.Errorf("invalid A2AEndpoint: %w", err)
+	}
 	if bid.Confidence < 0 || bid.Confidence > 1 {
 		return errors.New("confidence must be between 0 and 1")
 	}
@@ -171,6 +177,37 @@ func validateBid(now time.Time, bid model.BidPacket) error {
 	}
 	if bid.ExpiresAt.Before(now) {
 		return errors.New("bid already expired")
+	}
+	return nil
+}
+
+// validateEndpointURL checks that the A2AEndpoint is a valid HTTPS URL and
+// does not point to private/internal IP ranges (SSRF prevention).
+func validateEndpointURL(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return errors.New("malformed URL")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return errors.New("scheme must be http or https")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return errors.New("missing host")
+	}
+	// Block localhost variants
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "0.0.0.0" {
+		return errors.New("localhost endpoints not allowed")
+	}
+	// Block cloud metadata endpoints
+	if lower == "169.254.169.254" || lower == "metadata.google.internal" {
+		return errors.New("metadata endpoints not allowed")
+	}
+	// Block private IP ranges
+	ip := net.ParseIP(host)
+	if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+		return errors.New("private IP addresses not allowed")
 	}
 	return nil
 }

@@ -124,9 +124,9 @@ func (s *Service) evaluate(ctx context.Context, work model.WorkSpec) (model.BidE
 
 		priceScore := clamp01(1 - (bid.Price / work.Budget.MaxPrice))
 		confScore := clamp01(bid.Confidence)
-		mvpScore := 0.5
+		mvpScore := 0.5 // no sample provided
 		if bid.MVPSample != nil {
-			mvpScore = 0.8
+			mvpScore = 0.8 // sample provided, gets scoring boost
 		}
 		slaScore := calculateSLAScore(bid.SLA, work.Constraints)
 

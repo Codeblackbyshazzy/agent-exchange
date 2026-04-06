@@ -432,9 +432,9 @@ func TestGenerateEvalID(t *testing.T) {
 	id1 := generateEvalID()
 	id2 := generateEvalID()
 
-	// Check format
-	if len(id1) != 21 { // "eval_" + 16 hex chars
-		t.Errorf("generateEvalID() returned wrong length: %d, want 21", len(id1))
+	// Check format: "eval_" + 32 hex chars (16 bytes)
+	if len(id1) != 37 {
+		t.Errorf("generateEvalID() returned wrong length: %d, want 37", len(id1))
 	}
 
 	if id1[:5] != "eval_" {
