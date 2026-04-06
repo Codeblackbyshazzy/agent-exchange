@@ -110,10 +110,14 @@ func main() {
 
 	// Initialize NATS and event publisher
 	publisher := events.NewPublisher("aex-settlement")
+	if cfg.WebhookSecret != "" {
+		publisher.WithWebhookSecret(cfg.WebhookSecret)
+	}
 	if cfg.NatsURL != "" {
 		natsCfg := aexnats.DefaultConfig()
 		natsCfg.URL = cfg.NatsURL
 		natsCfg.Name = "aex-settlement"
+		natsCfg.StreamReplicas = cfg.NatsStreamReplicas
 		natsClient, natsErr := aexnats.Connect(natsCfg)
 		if natsErr != nil {
 			slog.Warn("failed to connect to NATS, events will be log-only", "error", natsErr)
@@ -122,7 +126,7 @@ func main() {
 				slog.Warn("failed to ensure NATS streams", "error", err)
 			}
 			publisher.WithNATS(natsClient)
-			slog.Info("NATS connected", "url", cfg.NatsURL)
+			slog.Info("NATS connected", "url", cfg.NatsURL, "replicas", cfg.NatsStreamReplicas)
 			defer func() {
 				if err := natsClient.Close(); err != nil {
 					slog.Error("failed to close NATS", "error", err)

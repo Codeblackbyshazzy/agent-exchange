@@ -60,6 +60,8 @@ services:
       PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
       ENVIRONMENT: "development"
       NATS_URL: "nats://nats:4222"
+      NATS_STREAM_REPLICAS: "1"
+      WEBHOOK_SECRET: "dev-webhook-secret-do-not-use-in-production"
     ports:
       - "8081:8080"
     depends_on:
@@ -184,6 +186,8 @@ services:
       AP2_ENABLED: "true"
       CREDENTIALS_PROVIDER_URL: "http://aex-credentials-provider:8080"
       NATS_URL: "nats://nats:4222"
+      NATS_STREAM_REPLICAS: "1"
+      WEBHOOK_SECRET: "dev-webhook-secret-do-not-use-in-production"
     ports:
       - "8088:8080"
     depends_on:
@@ -292,6 +296,8 @@ services:
       TRUST_BROKER_URL: "http://aex-trust-broker:8080"
       PROVIDER_REGISTRY_URL: "http://aex-provider-registry:8080"
       NATS_URL: "nats://nats:4222"
+      NATS_STREAM_REPLICAS: "1"
+      WEBHOOK_SECRET: "dev-webhook-secret-do-not-use-in-production"
       IDENTITY_URL: "http://aex-identity:8080"
     ports:
       - "8091:8091"

@@ -68,6 +68,21 @@ spec:
                 configMapKeyRef:
                   name: aex-config
                   key: SECURITYPAY_URL
+            - name: NATS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: NATS_URL
+            - name: NATS_STREAM_REPLICAS
+              valueFrom:
+                configMapKeyRef:
+                  name: aex-config
+                  key: NATS_STREAM_REPLICAS
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aex-secrets
+                  key: WEBHOOK_SECRET
           resources:
             requests:
               cpu: 100m
