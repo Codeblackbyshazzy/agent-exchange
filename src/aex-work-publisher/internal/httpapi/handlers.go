@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-work-publisher/internal/model"
 	"github.com/parlakisik/agent-exchange/aex-work-publisher/internal/service"
@@ -32,21 +33,21 @@ func (h *Handlers) HandleSubmitWork(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB limit
 	if err != nil {
-		http.Error(w, "failed to read request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read request")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	var req model.WorkSubmission
 	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	resp, err := h.svc.PublishWork(ctx, consumerID, req)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to publish work", "error", err)
-		http.Error(w, "failed to publish work", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to publish work")
 		return
 	}
 
@@ -59,18 +60,18 @@ func (h *Handlers) HandleGetWork(w http.ResponseWriter, r *http.Request) {
 
 	workID := extractWorkID(r.URL.Path)
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
 	work, err := h.svc.GetWork(ctx, workID)
 	if err != nil {
 		if err == service.ErrWorkNotFound {
-			http.Error(w, "work not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "work not found")
 			return
 		}
 		slog.ErrorContext(ctx, "failed to get work", "error", err)
-		http.Error(w, "failed to get work", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get work")
 		return
 	}
 
@@ -88,18 +89,18 @@ func (h *Handlers) HandleCancelWork(w http.ResponseWriter, r *http.Request) {
 
 	workID := extractWorkID(r.URL.Path)
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
 	work, err := h.svc.CancelWork(ctx, workID, consumerID)
 	if err != nil {
 		if err == service.ErrWorkNotFound {
-			http.Error(w, "work not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "work not found")
 			return
 		}
 		slog.ErrorContext(ctx, "failed to cancel work", "error", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 
@@ -112,7 +113,7 @@ func (h *Handlers) HandleBidSubmitted(w http.ResponseWriter, r *http.Request) {
 
 	workID := extractWorkID(r.URL.Path)
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
@@ -120,13 +121,13 @@ func (h *Handlers) HandleBidSubmitted(w http.ResponseWriter, r *http.Request) {
 		BidID string `json:"bid_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if err := h.svc.OnBidSubmitted(ctx, workID, req.BidID); err != nil {
 		slog.ErrorContext(ctx, "failed to record bid", "error", err)
-		http.Error(w, "failed to record bid", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to record bid")
 		return
 	}
 
@@ -141,13 +142,13 @@ func (h *Handlers) HandleCloseBidWindow(w http.ResponseWriter, r *http.Request) 
 
 	workID := extractWorkID(r.URL.Path)
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
 	if err := h.svc.CloseBidWindow(ctx, workID); err != nil {
 		slog.ErrorContext(ctx, "failed to close bid window", "error", err)
-		http.Error(w, "failed to close bid window", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to close bid window")
 		return
 	}
 
@@ -160,6 +161,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func extractWorkID(path string) string {

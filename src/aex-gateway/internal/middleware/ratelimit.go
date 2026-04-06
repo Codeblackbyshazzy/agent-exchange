@@ -126,6 +126,7 @@ func RateLimit(limiter *RateLimiter) func(http.Handler) http.Handler {
 						"code":       "rate_limit_exceeded",
 						"message":    "Rate limit exceeded. Please retry after " + strconv.Itoa(retryAfter) + " seconds.",
 						"request_id": GetRequestID(r.Context()),
+						"timestamp":  time.Now().UTC().Format(time.RFC3339),
 					},
 				})
 				return

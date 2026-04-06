@@ -27,13 +27,13 @@ func (s *Service) HandleGetTrust(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	providerID := pathParam(r.URL.Path, "/v1/providers/", "/trust")
 	if providerID == "" {
-		http.Error(w, "provider_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "PROVIDER_ID_REQUIRED", "provider_id is required")
 		return
 	}
 
 	rec, err := s.store.GetTrustRecord(ctx, providerID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if rec == nil {
@@ -57,7 +57,7 @@ func (s *Service) HandleBatchTrust(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req model.BatchTrustRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	out := model.BatchTrustResponse{Scores: map[string]float64{}}
@@ -68,7 +68,7 @@ func (s *Service) HandleBatchTrust(w http.ResponseWriter, r *http.Request) {
 		}
 		rec, err := s.store.GetTrustRecord(ctx, id)
 		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 			return
 		}
 		if rec == nil {
@@ -84,11 +84,11 @@ func (s *Service) HandleRecordOutcome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var out model.ContractOutcome
 	if err := decodeJSON(r, &out); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	if out.ProviderID == "" || out.ContractID == "" || out.Outcome == "" {
-		http.Error(w, "missing required fields", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "MISSING_REQUIRED_FIELDS", "missing required fields")
 		return
 	}
 	if out.ID == "" {
@@ -102,13 +102,13 @@ func (s *Service) HandleRecordOutcome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.SaveOutcome(ctx, out); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
 	updated, prevScore, prevTier, err := s.recalculate(ctx, out.ProviderID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -297,6 +297,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func generateID(prefix string) string {

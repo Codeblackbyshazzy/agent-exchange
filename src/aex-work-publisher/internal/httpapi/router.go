@@ -28,7 +28,7 @@ func dispatchWorkPOST(h *Handlers) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only handle POST /v1/work/{work_id}/cancel
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 			return
 		}
 
@@ -45,7 +45,7 @@ func dispatchWorkPOST(h *Handlers) http.HandlerFunc {
 func dispatchInternalWorkPOST(h *Handlers) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 			return
 		}
 

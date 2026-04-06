@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Context key type for storing agent ID
@@ -26,18 +28,18 @@ func AuthMiddleware(auth AgentAuthenticator) func(http.Handler) http.Handler {
 			// Extract Bearer token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+				respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing authorization header")
 				return
 			}
 
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
+				respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid authorization header format")
 				return
 			}
 
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			if token == "" {
-				http.Error(w, `{"error":"empty token"}`, http.StatusUnauthorized)
+				respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "empty token")
 				return
 			}
 
@@ -45,7 +47,7 @@ func AuthMiddleware(auth AgentAuthenticator) func(http.Handler) http.Handler {
 			tokenHash := SHA256Hex(token)
 			agentID, err := auth.GetAgentIDByTokenHash(tokenHash)
 			if err != nil {
-				http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+				respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid token")
 				return
 			}
 
@@ -68,6 +70,18 @@ func GetAuthenticatedAgentID(r *http.Request) string {
 func SHA256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 // OptionalAuthMiddleware creates a middleware that validates Bearer tokens if present

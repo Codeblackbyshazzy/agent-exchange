@@ -31,7 +31,7 @@ func dispatchUsage(h *Handlers) http.HandlerFunc {
 		case http.MethodGet:
 			h.GetUsage(w, r)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		}
 	}
 }

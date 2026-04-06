@@ -44,7 +44,7 @@ func dispatchCertRequest(h *Handlers) http.HandlerFunc {
 		case http.MethodPost:
 			h.RequestCertificate(w, r)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		}
 	}
 }
@@ -58,7 +58,7 @@ func dispatchCertByID(h *Handlers) http.HandlerFunc {
 		path := r.URL.Path
 		const prefix = "/v1/certificates/"
 		if len(path) <= len(prefix) {
-			http.Error(w, "certificate ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "CERTIFICATE_ID_REQUIRED", "certificate ID is required")
 			return
 		}
 
@@ -66,7 +66,7 @@ func dispatchCertByID(h *Handlers) http.HandlerFunc {
 		certID, subPath := splitPath(rest)
 
 		if certID == "" {
-			http.Error(w, "certificate ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "CERTIFICATE_ID_REQUIRED", "certificate ID is required")
 			return
 		}
 
@@ -78,7 +78,7 @@ func dispatchCertByID(h *Handlers) http.HandlerFunc {
 		case subPath == "" && r.Method == http.MethodDelete:
 			h.RevokeCertificate(w, r, certID)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		}
 	}
 }
@@ -90,7 +90,7 @@ func dispatchProviders(h *Handlers) http.HandlerFunc {
 		path := r.URL.Path
 		const prefix = "/v1/providers/"
 		if len(path) <= len(prefix) {
-			http.Error(w, "provider ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "BAD_REQUEST", "provider ID is required")
 			return
 		}
 
@@ -98,7 +98,7 @@ func dispatchProviders(h *Handlers) http.HandlerFunc {
 		providerID, subPath := splitPath(rest)
 
 		if providerID == "" {
-			http.Error(w, "provider ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "BAD_REQUEST", "provider ID is required")
 			return
 		}
 
@@ -108,7 +108,7 @@ func dispatchProviders(h *Handlers) http.HandlerFunc {
 		case subPath == "reputation" && r.Method == http.MethodGet:
 			h.GetProviderReputation(w, r, providerID)
 		default:
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		}
 	}
 }
@@ -119,7 +119,7 @@ func dispatchInternalProviders(h *Handlers) http.HandlerFunc {
 		path := r.URL.Path
 		const prefix = "/internal/v1/providers/"
 		if len(path) <= len(prefix) {
-			http.Error(w, "provider ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "BAD_REQUEST", "provider ID is required")
 			return
 		}
 
@@ -127,7 +127,7 @@ func dispatchInternalProviders(h *Handlers) http.HandlerFunc {
 		providerID, subPath := splitPath(rest)
 
 		if providerID == "" {
-			http.Error(w, "provider ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "BAD_REQUEST", "provider ID is required")
 			return
 		}
 
@@ -135,7 +135,7 @@ func dispatchInternalProviders(h *Handlers) http.HandlerFunc {
 		case subPath == "can-perform" && r.Method == http.MethodGet:
 			h.CanPerform(w, r, providerID)
 		default:
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		}
 	}
 }
@@ -147,7 +147,7 @@ func dispatchInternalCertByID(h *Handlers) http.HandlerFunc {
 		path := r.URL.Path
 		const prefix = "/internal/v1/certificates/"
 		if len(path) <= len(prefix) {
-			http.Error(w, "certificate/request ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "CERTIFICATE_ID_REQUIRED", "certificate/request ID is required")
 			return
 		}
 
@@ -155,7 +155,7 @@ func dispatchInternalCertByID(h *Handlers) http.HandlerFunc {
 		id, subPath := splitPath(rest)
 
 		if id == "" {
-			http.Error(w, "certificate/request ID is required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "CERTIFICATE_ID_REQUIRED", "certificate/request ID is required")
 			return
 		}
 
@@ -165,7 +165,7 @@ func dispatchInternalCertByID(h *Handlers) http.HandlerFunc {
 		case subPath == "reject" && r.Method == http.MethodPost:
 			h.RejectCertificate(w, r, id)
 		default:
-			http.Error(w, "not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		}
 	}
 }

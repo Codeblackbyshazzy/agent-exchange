@@ -248,6 +248,7 @@ func respondError(w http.ResponseWriter, status int, code, message string, r *ht
 			"code":       code,
 			"message":    message,
 			"request_id": GetRequestID(r.Context()),
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 }

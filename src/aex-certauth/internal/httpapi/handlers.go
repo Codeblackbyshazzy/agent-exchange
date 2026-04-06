@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-certauth/internal/service"
 	"github.com/parlakisik/agent-exchange/aex-certauth/internal/store"
@@ -36,7 +37,7 @@ func NewHandlers(certSvc *service.CertificateService, repSvc *service.Reputation
 func (h *Handlers) RequestCertificate(w http.ResponseWriter, r *http.Request) {
 	var req service.CreateCertRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
@@ -44,14 +45,14 @@ func (h *Handlers) RequestCertificate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case service.ErrMissingProviderID:
-			respondError(w, http.StatusBadRequest, err.Error(), "MISSING_PROVIDER_ID")
+			respondError(w, http.StatusBadRequest, "MISSING_PROVIDER_ID", err.Error())
 		case service.ErrMissingClaims:
-			respondError(w, http.StatusBadRequest, err.Error(), "MISSING_CLAIMS")
+			respondError(w, http.StatusBadRequest, "MISSING_CLAIMS", err.Error())
 		case service.ErrMissingPublicKey:
-			respondError(w, http.StatusBadRequest, err.Error(), "MISSING_PUBLIC_KEY")
+			respondError(w, http.StatusBadRequest, "MISSING_PUBLIC_KEY", err.Error())
 		default:
 			slog.ErrorContext(r.Context(), "request certificate failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		}
 		return
 	}
@@ -64,11 +65,11 @@ func (h *Handlers) GetCertificate(w http.ResponseWriter, r *http.Request, certID
 	cert, err := h.certSvc.GetCertificate(r.Context(), certID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "certificate not found", "NOT_FOUND")
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate not found")
 			return
 		}
 		slog.ErrorContext(r.Context(), "get certificate failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -81,16 +82,16 @@ func (h *Handlers) RenewCertificate(w http.ResponseWriter, r *http.Request, cert
 	if err != nil {
 		switch err {
 		case service.ErrCertNotActive:
-			respondError(w, http.StatusConflict, err.Error(), "CERT_NOT_ACTIVE")
+			respondError(w, http.StatusConflict, "CERT_NOT_ACTIVE", err.Error())
 		case service.ErrCertificateNotFound:
-			respondError(w, http.StatusNotFound, "certificate not found", "NOT_FOUND")
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate not found")
 		default:
 			if errors.Is(err, store.ErrNotFound) {
-				respondError(w, http.StatusNotFound, "certificate not found", "NOT_FOUND")
+				respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate not found")
 				return
 			}
 			slog.ErrorContext(r.Context(), "renew certificate failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		}
 		return
 	}
@@ -113,14 +114,14 @@ func (h *Handlers) RevokeCertificate(w http.ResponseWriter, r *http.Request, cer
 	if err != nil {
 		switch err {
 		case service.ErrAlreadyRevoked:
-			respondError(w, http.StatusConflict, err.Error(), "ALREADY_REVOKED")
+			respondError(w, http.StatusConflict, "ALREADY_REVOKED", err.Error())
 		default:
 			if errors.Is(err, store.ErrNotFound) {
-				respondError(w, http.StatusNotFound, "certificate not found", "NOT_FOUND")
+				respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate not found")
 				return
 			}
 			slog.ErrorContext(r.Context(), "revoke certificate failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		}
 		return
 	}
@@ -131,7 +132,7 @@ func (h *Handlers) RevokeCertificate(w http.ResponseWriter, r *http.Request, cer
 // VerifyCertificate handles POST /v1/certificates/verify
 func (h *Handlers) VerifyCertificate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
@@ -139,12 +140,12 @@ func (h *Handlers) VerifyCertificate(w http.ResponseWriter, r *http.Request) {
 		CertificateID string `json:"certificate_id"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if req.CertificateID == "" {
-		respondError(w, http.StatusBadRequest, "certificate_id is required", "MISSING_CERTIFICATE_ID")
+		respondError(w, http.StatusBadRequest, "CERTIFICATE_ID_REQUIRED", "certificate_id is required")
 		return
 	}
 
@@ -159,7 +160,7 @@ func (h *Handlers) VerifyCertificate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.ErrorContext(r.Context(), "verify certificate failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -183,7 +184,7 @@ func (h *Handlers) VerifyCertificate(w http.ResponseWriter, r *http.Request) {
 // SearchCertificates handles GET /v1/certificates/search
 func (h *Handlers) SearchCertificates(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
@@ -202,7 +203,7 @@ func (h *Handlers) SearchCertificates(w http.ResponseWriter, r *http.Request) {
 	certs, err := h.certSvc.SearchCertificates(r.Context(), filters)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "search certificates failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -217,7 +218,7 @@ func (h *Handlers) GetProviderCertificates(w http.ResponseWriter, r *http.Reques
 	certs, err := h.certSvc.GetProviderCertificates(r.Context(), providerID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get provider certificates failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -239,12 +240,12 @@ func (h *Handlers) GetProviderReputation(w http.ResponseWriter, r *http.Request,
 			rep, err = h.repSvc.CalculateReputation(r.Context(), providerID)
 			if err != nil {
 				slog.ErrorContext(r.Context(), "calculate reputation failed", "error", err)
-				respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+				respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 				return
 			}
 		} else {
 			slog.ErrorContext(r.Context(), "get reputation failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 			return
 		}
 	}
@@ -255,7 +256,7 @@ func (h *Handlers) GetProviderReputation(w http.ResponseWriter, r *http.Request,
 // GetLeaderboard handles GET /v1/reputation/leaderboard
 func (h *Handlers) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
@@ -266,7 +267,7 @@ func (h *Handlers) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 	scores, err := h.repSvc.GetLeaderboard(r.Context(), limit, offset)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get leaderboard failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -283,14 +284,14 @@ func (h *Handlers) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 // GetCRL handles GET /v1/crl
 func (h *Handlers) GetCRL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
 	crl, err := h.verifySvc.GetCRL(r.Context())
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get CRL failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -302,7 +303,7 @@ func (h *Handlers) GetCRL(w http.ResponseWriter, r *http.Request) {
 // BatchVerify handles POST /internal/v1/certificates/batch-verify
 func (h *Handlers) BatchVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
@@ -310,19 +311,19 @@ func (h *Handlers) BatchVerify(w http.ResponseWriter, r *http.Request) {
 		CertificateIDs []string `json:"certificate_ids"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if len(req.CertificateIDs) == 0 {
-		respondError(w, http.StatusBadRequest, "certificate_ids is required", "MISSING_CERTIFICATE_IDS")
+		respondError(w, http.StatusBadRequest, "MISSING_CERTIFICATE_IDS", "certificate_ids is required")
 		return
 	}
 
 	verifyResults, err := h.verifySvc.BatchVerify(r.Context(), req.CertificateIDs)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "batch verify failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -355,14 +356,14 @@ func (h *Handlers) CanPerform(w http.ResponseWriter, r *http.Request, providerID
 	category := r.URL.Query().Get("category")
 
 	if capability == "" {
-		respondError(w, http.StatusBadRequest, "capability query parameter is required", "MISSING_CAPABILITY")
+		respondError(w, http.StatusBadRequest, "MISSING_CAPABILITY", "capability query parameter is required")
 		return
 	}
 
 	canPerform, err := h.verifySvc.CanPerform(r.Context(), providerID, category, capability)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "can-perform lookup failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -389,14 +390,14 @@ func (h *Handlers) ApproveCertificate(w http.ResponseWriter, r *http.Request, re
 	if err != nil {
 		switch err {
 		case service.ErrRequestNotPending:
-			respondError(w, http.StatusConflict, err.Error(), "REQUEST_NOT_PENDING")
+			respondError(w, http.StatusConflict, "REQUEST_NOT_PENDING", err.Error())
 		default:
 			if errors.Is(err, store.ErrNotFound) {
-				respondError(w, http.StatusNotFound, "certificate request not found", "NOT_FOUND")
+				respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate request not found")
 				return
 			}
 			slog.ErrorContext(r.Context(), "approve certificate failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		}
 		return
 	}
@@ -411,7 +412,7 @@ func (h *Handlers) RejectCertificate(w http.ResponseWriter, r *http.Request, req
 		Reason     string `json:"reason"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
@@ -423,14 +424,14 @@ func (h *Handlers) RejectCertificate(w http.ResponseWriter, r *http.Request, req
 	if err != nil {
 		switch err {
 		case service.ErrRequestNotPending:
-			respondError(w, http.StatusConflict, err.Error(), "REQUEST_NOT_PENDING")
+			respondError(w, http.StatusConflict, "REQUEST_NOT_PENDING", err.Error())
 		default:
 			if errors.Is(err, store.ErrNotFound) {
-				respondError(w, http.StatusNotFound, "certificate request not found", "NOT_FOUND")
+				respondError(w, http.StatusNotFound, "NOT_FOUND", "certificate request not found")
 				return
 			}
 			slog.ErrorContext(r.Context(), "reject certificate failed", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		}
 		return
 	}
@@ -443,7 +444,7 @@ func (h *Handlers) RejectCertificate(w http.ResponseWriter, r *http.Request, req
 // GetCAPublicKey handles GET /.well-known/aex-ca.json
 func (h *Handlers) GetCAPublicKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return
 	}
 
@@ -471,12 +472,15 @@ func respondJSON(w http.ResponseWriter, statusCode int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-func respondError(w http.ResponseWriter, statusCode int, message, code string) {
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error": message,
-		"code":  code,
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
 	})
 }
 

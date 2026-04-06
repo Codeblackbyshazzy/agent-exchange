@@ -62,20 +62,20 @@ func (s *Service) HandleSubmitBid(w http.ResponseWriter, r *http.Request) {
 
 	providerID, err := s.validateProviderAuth(r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "Bad request")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	var req model.SubmitBidRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid bid format", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid bid format")
 		return
 	}
 
@@ -97,12 +97,12 @@ func (s *Service) HandleSubmitBid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateBid(now, bid); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "INVALID_BID", err.Error())
 		return
 	}
 
 	if err := s.store.Save(ctx, bid); err != nil {
-		http.Error(w, "Failed to store bid", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to store bid")
 		return
 	}
 
@@ -119,14 +119,14 @@ func (s *Service) HandleInternalListBids(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	workID := strings.TrimSpace(r.URL.Query().Get("work_id"))
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
 	limit, offset := parsePagination(r)
 	bids, err := s.store.ListByWorkID(ctx, workID, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to load bids", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load bids")
 		return
 	}
 
@@ -220,6 +220,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func parsePagination(r *http.Request) (limit, offset int) {

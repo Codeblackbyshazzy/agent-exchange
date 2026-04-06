@@ -36,20 +36,20 @@ func (s *Service) HandleRegisterProvider(w http.ResponseWriter, r *http.Request)
 
 	var req model.ProviderRegistrationRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	if strings.TrimSpace(req.Name) == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "NAME_REQUIRED", "name is required")
 		return
 	}
 	if err := s.validateURL(req.Endpoint); err != nil {
-		http.Error(w, "endpoint must be a valid URL: "+err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "INVALID_ENDPOINT", "endpoint must be a valid URL: "+err.Error())
 		return
 	}
 	if req.BidWebhook != "" {
 		if err := s.validateURL(req.BidWebhook); err != nil {
-			http.Error(w, "bid_webhook must be a valid URL: "+err.Error(), http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "INVALID_BID_WEBHOOK", "bid_webhook must be a valid URL: "+err.Error())
 			return
 		}
 	}
@@ -57,7 +57,7 @@ func (s *Service) HandleRegisterProvider(w http.ResponseWriter, r *http.Request)
 	// Check if provider with same name already exists - upsert behavior
 	existing, err := s.store.GetProviderByName(ctx, req.Name)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -74,7 +74,7 @@ func (s *Service) HandleRegisterProvider(w http.ResponseWriter, r *http.Request)
 		existing.UpdatedAt = now
 
 		if err := s.store.UpdateProvider(ctx, *existing); err != nil {
-			http.Error(w, "failed to update provider", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update provider")
 			return
 		}
 
@@ -137,7 +137,7 @@ func (s *Service) HandleRegisterProvider(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := s.store.CreateProvider(ctx, p); err != nil {
-		http.Error(w, "failed to create provider", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create provider")
 		return
 	}
 
@@ -157,31 +157,31 @@ func (s *Service) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 
 	var req model.SubscriptionRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	req.ProviderID = strings.TrimSpace(req.ProviderID)
 	if req.ProviderID == "" {
-		http.Error(w, "provider_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "PROVIDER_ID_REQUIRED", "provider_id is required")
 		return
 	}
 	if len(req.Categories) == 0 {
-		http.Error(w, "categories is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CATEGORIES_REQUIRED", "categories is required")
 		return
 	}
 	p, err := s.store.GetProvider(ctx, req.ProviderID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if p == nil {
-		http.Error(w, "provider not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "provider not found")
 		return
 	}
 
 	if req.Delivery.Method == "webhook" && req.Delivery.WebhookURL != "" {
 		if err := s.validateURL(req.Delivery.WebhookURL); err != nil {
-			http.Error(w, "delivery.webhook_url must be a valid URL: "+err.Error(), http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "INVALID_WEBHOOK_URL", "delivery.webhook_url must be a valid URL: "+err.Error())
 			return
 		}
 	}
@@ -197,7 +197,7 @@ func (s *Service) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 		CreatedAt:      now,
 	}
 	if err := s.store.CreateSubscription(ctx, sub); err != nil {
-		http.Error(w, "failed to create subscription", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create subscription")
 		return
 	}
 
@@ -218,17 +218,17 @@ func (s *Service) HandleGetProvider(w http.ResponseWriter, r *http.Request) {
 	providerID := strings.TrimPrefix(r.URL.Path, "/v1/providers/")
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" {
-		http.Error(w, "provider_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "PROVIDER_ID_REQUIRED", "provider_id is required")
 		return
 	}
 
 	p, err := s.store.GetProvider(ctx, providerID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if p == nil {
-		http.Error(w, "provider not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "provider not found")
 		return
 	}
 
@@ -252,7 +252,7 @@ func (s *Service) HandleListSubscriptions(w http.ResponseWriter, r *http.Request
 
 	subs, err := s.store.ListSubscriptions(ctx)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -274,13 +274,13 @@ func (s *Service) HandleInternalSubscribed(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
 	if category == "" {
-		http.Error(w, "category is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CATEGORY_REQUIRED", "category is required")
 		return
 	}
 
 	subs, err := s.store.ListSubscriptions(ctx)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -317,7 +317,7 @@ func (s *Service) HandleInternalSubscribed(w http.ResponseWriter, r *http.Reques
 
 	providers, err := s.store.ListProviders(ctx, providerIDs)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -392,6 +392,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
+}
+
 func generateToken(prefix string) string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
@@ -408,7 +420,7 @@ func (s *Service) HandleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	apiKey := strings.TrimSpace(r.URL.Query().Get("api_key"))
 	if apiKey == "" {
-		http.Error(w, "api_key is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "API_KEY_REQUIRED", "api_key is required")
 		return
 	}
 
@@ -416,7 +428,7 @@ func (s *Service) HandleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	provider, err := s.store.GetProviderByAPIKeyHash(ctx, keyHash)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -484,7 +496,7 @@ func (s *Service) HandleSearchProviders(w http.ResponseWriter, r *http.Request) 
 
 	results, err := s.store.SearchBySkillTags(ctx, skillTags, minTrust, limit, filters)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -501,7 +513,7 @@ func (s *Service) HandleRegisterAgentCard(w http.ResponseWriter, r *http.Request
 	// Extract provider_id from path: /v1/providers/{provider_id}/agent-card
 	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/providers/"), "/")
 	if len(pathParts) < 2 {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid path")
 		return
 	}
 	providerID := pathParts[0]
@@ -509,24 +521,24 @@ func (s *Service) HandleRegisterAgentCard(w http.ResponseWriter, r *http.Request
 	// Verify provider exists
 	provider, err := s.store.GetProvider(ctx, providerID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if provider == nil {
-		http.Error(w, "provider not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "provider not found")
 		return
 	}
 
 	// Parse agent card
 	var card model.AgentCard
 	if err := decodeJSON(r, &card); err != nil {
-		http.Error(w, "invalid agent card: "+err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid agent card: "+err.Error())
 		return
 	}
 
 	// Validate required fields
 	if card.Name == "" || card.URL == "" || len(card.Skills) == 0 {
-		http.Error(w, "agent card must have name, url, and at least one skill", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "INVALID_AGENT_CARD", "agent card must have name, url, and at least one skill")
 		return
 	}
 
@@ -535,7 +547,7 @@ func (s *Service) HandleRegisterAgentCard(w http.ResponseWriter, r *http.Request
 
 	// Save agent card
 	if err := s.store.SaveAgentCard(ctx, providerID, card, a2aEndpoint); err != nil {
-		http.Error(w, "failed to save agent card", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to save agent card")
 		return
 	}
 
@@ -555,7 +567,7 @@ func (s *Service) HandleRegisterAgentCard(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := s.store.IndexSkills(ctx, providerID, skills); err != nil {
-		http.Error(w, "failed to index skills", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to index skills")
 		return
 	}
 
@@ -577,17 +589,17 @@ func (s *Service) HandleGetProviderWithA2A(w http.ResponseWriter, r *http.Reques
 	providerID = strings.TrimSpace(providerID)
 
 	if providerID == "" {
-		http.Error(w, "provider_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "PROVIDER_ID_REQUIRED", "provider_id is required")
 		return
 	}
 
 	provider, err := s.store.GetProviderWithA2A(ctx, providerID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if provider == nil {
-		http.Error(w, "provider not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "provider not found")
 		return
 	}
 
@@ -600,7 +612,7 @@ func (s *Service) HandleListAllProviders(w http.ResponseWriter, r *http.Request)
 
 	providers, err := s.store.ListAllProviders(ctx)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 

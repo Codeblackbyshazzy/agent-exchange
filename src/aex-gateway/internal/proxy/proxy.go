@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-gateway/internal/config"
 	"github.com/parlakisik/agent-exchange/aex-gateway/internal/middleware"
@@ -93,6 +94,7 @@ func respondError(w http.ResponseWriter, status int, code, message string, r *ht
 			"code":       code,
 			"message":    message,
 			"request_id": middleware.GetRequestID(r.Context()),
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 }
