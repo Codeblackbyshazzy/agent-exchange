@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -593,7 +594,7 @@ func (s *Service) HandleGetProviderWithA2A(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, provider)
 }
 
-// HandleListAllProviders lists all registered providers
+// HandleListAllProviders lists all registered providers with pagination
 func (s *Service) HandleListAllProviders(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -603,7 +604,7 @@ func (s *Service) HandleListAllProviders(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return simplified list
+	// Filter active only
 	result := make([]map[string]any, 0, len(providers))
 	for _, p := range providers {
 		if p.Status != model.ProviderStatusActive {
@@ -620,9 +621,34 @@ func (s *Service) HandleListAllProviders(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
+	// Apply pagination
+	limit, offset := 100, 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, _ := strconv.Atoi(v); n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, _ := strconv.Atoi(v); n >= 0 {
+			offset = n
+		}
+	}
+	total := len(result)
+	if offset >= len(result) {
+		result = nil
+	} else {
+		end := offset + limit
+		if end > len(result) {
+			end = len(result)
+		}
+		result = result[offset:end]
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"providers": result,
-		"total":     len(result),
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"net/http"
 	"net/url"
 	"strings"
@@ -122,7 +123,8 @@ func (s *Service) HandleInternalListBids(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	bids, err := s.store.ListByWorkID(ctx, workID)
+	limit, offset := parsePagination(r)
+	bids, err := s.store.ListByWorkID(ctx, workID, limit, offset)
 	if err != nil {
 		http.Error(w, "Failed to load bids", http.StatusInternalServerError)
 		return
@@ -132,6 +134,8 @@ func (s *Service) HandleInternalListBids(w http.ResponseWriter, r *http.Request)
 		"work_id":    workID,
 		"bids":       bids,
 		"total_bids": len(bids),
+		"limit":      limit,
+		"offset":     offset,
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -216,6 +220,22 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func parsePagination(r *http.Request) (limit, offset int) {
+	limit = 100
+	offset = 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	return limit, offset
 }
 
 func generateBidID() string {

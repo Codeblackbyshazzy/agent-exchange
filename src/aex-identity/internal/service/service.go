@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -236,7 +237,36 @@ func (s *Service) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, keys)
+
+	// Apply pagination
+	limit, offset := 100, 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, _ := strconv.Atoi(v); n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, _ := strconv.Atoi(v); n >= 0 {
+			offset = n
+		}
+	}
+	total := len(keys)
+	if offset >= len(keys) {
+		keys = nil
+	} else {
+		end := offset + limit
+		if end > len(keys) {
+			end = len(keys)
+		}
+		keys = keys[offset:end]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"api_keys": keys,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
 }
 
 func (s *Service) HandleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {

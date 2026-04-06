@@ -34,11 +34,15 @@ func (s *MongoBidStore) Save(ctx context.Context, bid model.BidPacket) error {
 	return err
 }
 
-func (s *MongoBidStore) ListByWorkID(ctx context.Context, workID string) ([]model.BidPacket, error) {
+func (s *MongoBidStore) ListByWorkID(ctx context.Context, workID string, limit, offset int) ([]model.BidPacket, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cur, err := s.coll.Find(ctx, bson.M{"work_id": workID}, options.Find().SetSort(bson.D{{Key: "received_at", Value: -1}}))
+	opts := options.Find().
+		SetSort(bson.D{{Key: "received_at", Value: -1}}).
+		SetLimit(int64(limit)).
+		SetSkip(int64(offset))
+	cur, err := s.coll.Find(ctx, bson.M{"work_id": workID}, opts)
 	if err != nil {
 		return nil, err
 	}
