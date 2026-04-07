@@ -2,25 +2,30 @@ package config
 
 import (
 	"os"
+	"strconv"
 )
 
 type Config struct {
-	Port        string
-	Environment string
-	StoreType   string
-	MongoURI    string
-	MongoDB     string
-	NatsURL     string
+	Port               string
+	Environment        string
+	StoreType          string
+	MongoURI           string
+	MongoDB            string
+	NatsURL            string
+	NatsStreamReplicas int
+	WebhookSecret      string
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:        getEnv("PORT", "8080"),
-		Environment: getEnv("ENVIRONMENT", "development"),
-		StoreType:   getEnv("STORE_TYPE", "mongo"),
-		MongoURI:    getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDB:     getEnv("MONGO_DB", "aex"),
-		NatsURL:     getEnv("NATS_URL", ""),
+		Port:               getEnv("PORT", "8080"),
+		Environment:        getEnv("ENVIRONMENT", "development"),
+		StoreType:          getEnv("STORE_TYPE", "mongo"),
+		MongoURI:           getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoDB:            getEnv("MONGO_DB", "aex"),
+		NatsURL:            getEnv("NATS_URL", ""),
+		NatsStreamReplicas: getEnvInt("NATS_STREAM_REPLICAS", 1),
+		WebhookSecret:      getEnv("WEBHOOK_SECRET", ""),
 	}
 
 	return cfg, nil
@@ -29,6 +34,15 @@ func Load() (*Config, error) {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-credentials-provider/internal/service"
 	"github.com/parlakisik/agent-exchange/internal/ap2"
@@ -23,14 +24,14 @@ func NewHandlers(svc *service.Service) *Handlers {
 func (h *Handlers) GetPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userID")
 	if userID == "" {
-		http.Error(w, "user_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "USER_ID_REQUIRED", "user_id is required")
 		return
 	}
 
 	methods, err := h.svc.GetPaymentMethods(r.Context(), userID)
 	if err != nil {
 		slog.Error("failed to get payment methods", "error", err, "user_id", userID)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -49,25 +50,25 @@ type GetPaymentTokenRequest struct {
 func (h *Handlers) GetPaymentToken(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userID")
 	if userID == "" {
-		http.Error(w, "user_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "USER_ID_REQUIRED", "user_id is required")
 		return
 	}
 
 	var req GetPaymentTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if req.MethodID == "" {
-		http.Error(w, "method_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "METHOD_ID_REQUIRED", "method_id is required")
 		return
 	}
 
 	token, err := h.svc.GetPaymentToken(r.Context(), userID, req.MethodID)
 	if err != nil {
 		slog.Error("failed to get payment token", "error", err, "user_id", userID, "method_id", req.MethodID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 
@@ -78,14 +79,14 @@ func (h *Handlers) GetPaymentToken(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ProcessPayment(w http.ResponseWriter, r *http.Request) {
 	var mandate ap2.PaymentMandate
 	if err := json.NewDecoder(r.Body).Decode(&mandate); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	receipt, err := h.svc.ProcessPayment(r.Context(), &mandate)
 	if err != nil {
 		slog.Error("failed to process payment", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -101,19 +102,19 @@ func (h *Handlers) ProcessPayment(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) AddPaymentMethod(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userID")
 	if userID == "" {
-		http.Error(w, "user_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "USER_ID_REQUIRED", "user_id is required")
 		return
 	}
 
 	var method ap2.PaymentMethod
 	if err := json.NewDecoder(r.Body).Decode(&method); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if err := h.svc.AddPaymentMethod(r.Context(), userID, method); err != nil {
 		slog.Error("failed to add payment method", "error", err, "user_id", userID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 
@@ -127,14 +128,14 @@ func (h *Handlers) AddPaymentMethod(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetReceipt(w http.ResponseWriter, r *http.Request) {
 	receiptID := r.PathValue("receiptID")
 	if receiptID == "" {
-		http.Error(w, "receipt_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "RECEIPT_ID_REQUIRED", "receipt_id is required")
 		return
 	}
 
 	receipt, err := h.svc.GetReceipt(r.Context(), receiptID)
 	if err != nil {
 		slog.Error("failed to get receipt", "error", err, "receipt_id", receiptID)
-		http.Error(w, err.Error(), http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 
@@ -197,4 +198,16 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }

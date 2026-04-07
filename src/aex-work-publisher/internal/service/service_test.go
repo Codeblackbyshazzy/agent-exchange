@@ -46,7 +46,7 @@ func TestPublishWork(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := store.NewMemoryStore()
-			svc := New(st, "")
+			svc := New(st, "", nil)
 
 			req := model.WorkSubmission{
 				Category:    tt.category,
@@ -84,7 +84,7 @@ func TestPublishWork(t *testing.T) {
 
 func TestGetWork(t *testing.T) {
 	st := store.NewMemoryStore()
-	svc := New(st, "")
+	svc := New(st, "", nil)
 	ctx := context.Background()
 
 	req := model.WorkSubmission{
@@ -122,7 +122,7 @@ func TestGetWork(t *testing.T) {
 
 func TestCancelWork(t *testing.T) {
 	st := store.NewMemoryStore()
-	svc := New(st, "")
+	svc := New(st, "", nil)
 	ctx := context.Background()
 
 	req := model.WorkSubmission{
@@ -160,7 +160,7 @@ func TestCancelWork(t *testing.T) {
 
 func TestOnBidSubmitted(t *testing.T) {
 	st := store.NewMemoryStore()
-	svc := New(st, "")
+	svc := New(st, "", nil)
 	ctx := context.Background()
 
 	req := model.WorkSubmission{
@@ -203,7 +203,7 @@ func TestOnBidSubmitted(t *testing.T) {
 
 func TestCloseBidWindow(t *testing.T) {
 	st := store.NewMemoryStore()
-	svc := New(st, "")
+	svc := New(st, "", nil)
 	ctx := context.Background()
 
 	req := model.WorkSubmission{
@@ -246,7 +246,7 @@ func TestCloseBidWindow(t *testing.T) {
 
 func TestBidWindowDefaults(t *testing.T) {
 	st := store.NewMemoryStore()
-	svc := New(st, "")
+	svc := New(st, "", nil)
 	ctx := context.Background()
 
 	tests := []struct {

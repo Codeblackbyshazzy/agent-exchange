@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/parlakisik/agent-exchange/aex-settlement/internal/model"
 	"github.com/parlakisik/agent-exchange/aex-settlement/internal/service"
@@ -23,7 +24,7 @@ func NewHandlers(svc *service.Service) *Handlers {
 func (h *Handlers) GetUsage(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 
@@ -38,7 +39,7 @@ func (h *Handlers) GetUsage(w http.ResponseWriter, r *http.Request) {
 	usage, err := h.svc.GetUsage(r.Context(), tenantID, limit)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get usage failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -50,14 +51,14 @@ func (h *Handlers) GetUsage(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 
 	balance, err := h.svc.GetBalance(r.Context(), tenantID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get balance failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -69,7 +70,7 @@ func (h *Handlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 
@@ -84,7 +85,7 @@ func (h *Handlers) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	transactions, err := h.svc.GetTransactions(r.Context(), tenantID, limit)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "get transactions failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -100,12 +101,12 @@ func (h *Handlers) ProcessDeposit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if req.TenantID == "" || req.Amount == "" {
-		http.Error(w, "tenant_id and amount are required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "tenant_id and amount are required")
 		return
 	}
 
@@ -113,10 +114,10 @@ func (h *Handlers) ProcessDeposit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "process deposit failed", "error", err)
 		if err == service.ErrInvalidAmount {
-			http.Error(w, "invalid amount", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "INVALID_AMOUNT", "invalid amount")
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -128,17 +129,17 @@ func (h *Handlers) ProcessDeposit(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ProcessContractCompletion(w http.ResponseWriter, r *http.Request) {
 	var event model.ContractCompletedEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
 	if err := h.svc.ProcessContractCompletion(r.Context(), event); err != nil {
 		slog.ErrorContext(r.Context(), "process contract completion failed", "error", err)
 		if err == service.ErrExecutionExists {
-			http.Error(w, "execution already recorded", http.StatusConflict)
+			respondError(w, http.StatusConflict, "EXECUTION_EXISTS", "execution already recorded")
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -154,4 +155,16 @@ func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }

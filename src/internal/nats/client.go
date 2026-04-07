@@ -14,8 +14,9 @@ import (
 
 // Client wraps a NATS connection with JetStream support.
 type Client struct {
-	conn *nats.Conn
-	js   nats.JetStreamContext
+	conn           *nats.Conn
+	js             nats.JetStreamContext
+	streamReplicas int
 
 	mu     sync.RWMutex
 	closed bool
@@ -37,6 +38,10 @@ type Config struct {
 
 	// ReconnectWait is the delay between reconnect attempts.
 	ReconnectWait time.Duration
+
+	// StreamReplicas sets the replica factor for all streams.
+	// Use 1 for dev/test, 3 for production HA. Default: 1.
+	StreamReplicas int
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -89,7 +94,11 @@ func Connect(cfg Config) (*Client, error) {
 		"name", cfg.Name,
 	)
 
-	return &Client{conn: nc, js: js}, nil
+	replicas := cfg.StreamReplicas
+	if replicas < 1 {
+		replicas = 1
+	}
+	return &Client{conn: nc, js: js, streamReplicas: replicas}, nil
 }
 
 // JetStream returns the underlying JetStream context.
@@ -105,7 +114,7 @@ func (c *Client) Conn() *nats.Conn {
 // EnsureStreams creates or updates all AEX streams. This is safe to call on
 // every startup; existing streams are updated in place.
 func (c *Client) EnsureStreams() error {
-	for _, def := range AllStreams() {
+	for _, def := range AllStreams(c.streamReplicas) {
 		cfg := def.Config()
 		existing, err := c.js.StreamInfo(cfg.Name)
 		if err != nil && err != nats.ErrStreamNotFound {

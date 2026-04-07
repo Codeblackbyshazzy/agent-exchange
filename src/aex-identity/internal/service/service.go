@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,11 +27,11 @@ func (s *Service) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req model.CreateTenantRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	if strings.TrimSpace(req.Name) == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "NAME_REQUIRED", "name is required")
 		return
 	}
 	if req.Type == "" {
@@ -57,7 +58,7 @@ func (s *Service) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		t.Metadata = map[string]any{}
 	}
 	if err := s.store.CreateTenant(ctx, t); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -73,7 +74,7 @@ func (s *Service) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: now,
 	}
 	if err := s.store.CreateAPIKey(ctx, k); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -96,16 +97,16 @@ func (s *Service) HandleGetTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, t)
@@ -115,16 +116,16 @@ func (s *Service) HandleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "/suspend")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	now := time.Now().UTC()
@@ -132,7 +133,7 @@ func (s *Service) HandleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	t.SuspendedAt = &now
 	t.UpdatedAt = now
 	if err := s.store.UpdateTenant(ctx, *t); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, t)
@@ -142,16 +143,16 @@ func (s *Service) HandleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "/activate")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	now := time.Now().UTC()
@@ -160,7 +161,7 @@ func (s *Service) HandleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	t.SuspensionReason = nil
 	t.UpdatedAt = now
 	if err := s.store.UpdateTenant(ctx, *t); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, t)
@@ -170,22 +171,22 @@ func (s *Service) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "/api-keys")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 
 	var req model.CreateAPIKeyRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	name := strings.TrimSpace(req.Name)
@@ -207,7 +208,7 @@ func (s *Service) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: req.ExpiresAt,
 	}
 	if err := s.store.CreateAPIKey(ctx, k); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -228,43 +229,72 @@ func (s *Service) HandleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "/api-keys")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	keys, err := s.store.ListAPIKeys(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, keys)
+
+	// Apply pagination
+	limit, offset := 100, 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, _ := strconv.Atoi(v); n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, _ := strconv.Atoi(v); n >= 0 {
+			offset = n
+		}
+	}
+	total := len(keys)
+	if offset >= len(keys) {
+		keys = nil
+	} else {
+		end := offset + limit
+		if end > len(keys) {
+			end = len(keys)
+		}
+		keys = keys[offset:end]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"api_keys": keys,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
 }
 
 func (s *Service) HandleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/v1/tenants/", "/api-keys/")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	keyID := lastPathSegment(r.URL.Path)
 	if keyID == "" {
-		http.Error(w, "key_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "KEY_ID_REQUIRED", "key_id is required")
 		return
 	}
 	k, err := s.store.GetAPIKey(ctx, tenantID, keyID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if k == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	now := time.Now().UTC()
 	k.Status = model.APIKeyStatusRevoked
 	k.RevokedAt = &now
 	if err := s.store.UpdateAPIKey(ctx, *k); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"revoked": true, "id": k.ID})
@@ -274,39 +304,39 @@ func (s *Service) HandleValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req model.ValidateAPIKeyRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	if apiKey == "" {
-		http.Error(w, "api_key is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "API_KEY_REQUIRED", "api_key is required")
 		return
 	}
 	keyHash := hashAPIKey(apiKey)
 	k, err := s.store.FindAPIKeyByHash(ctx, keyHash)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if k == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	if k.Status != model.APIKeyStatusActive {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	if k.ExpiresAt != nil && time.Now().UTC().After(*k.ExpiresAt) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, k.TenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil || t.Status != model.TenantStatusActive {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	now := time.Now().UTC()
@@ -326,16 +356,16 @@ func (s *Service) HandleGetQuotas(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := pathParam(r.URL.Path, "/internal/v1/tenants/", "/quotas")
 	if tenantID == "" {
-		http.Error(w, "tenant_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "TENANT_ID_REQUIRED", "tenant_id is required")
 		return
 	}
 	t, err := s.store.GetTenant(ctx, tenantID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if t == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, t.Quotas)
@@ -384,6 +414,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func generateID(prefix string) string {

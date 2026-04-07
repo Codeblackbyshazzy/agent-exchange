@@ -52,9 +52,11 @@ type AgentCertificate struct {
 	Claims          []CapabilityClaim `json:"claims" bson:"claims"`
 
 	// Crypto
-	PublicKeyPEM string `json:"public_key_pem" bson:"public_key_pem"`
-	SignatureAlg string `json:"signature_alg" bson:"signature_alg"`
-	Signature    string `json:"signature" bson:"signature"`
+	PublicKeyPEM  string `json:"public_key_pem" bson:"public_key_pem"`
+	SignatureAlg  string `json:"signature_alg" bson:"signature_alg"`
+	Signature     string `json:"signature" bson:"signature"`
+	SignedData    string `json:"signed_data,omitempty" bson:"signed_data,omitempty"`       // canonical JSON that was signed (stored to avoid reconstruction)
+	SchemaVersion int    `json:"schema_version" bson:"schema_version"`                     // signing data format version (default 1)
 
 	// X.509 fields
 	IssuerID  string    `json:"issuer_id" bson:"issuer_id"`

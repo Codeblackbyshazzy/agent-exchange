@@ -6,8 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"strconv"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -58,20 +62,20 @@ func (s *Service) HandleSubmitBid(w http.ResponseWriter, r *http.Request) {
 
 	providerID, err := s.validateProviderAuth(r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "Bad request")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	var req model.SubmitBidRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid bid format", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid bid format")
 		return
 	}
 
@@ -93,12 +97,12 @@ func (s *Service) HandleSubmitBid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateBid(now, bid); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "INVALID_BID", err.Error())
 		return
 	}
 
 	if err := s.store.Save(ctx, bid); err != nil {
-		http.Error(w, "Failed to store bid", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to store bid")
 		return
 	}
 
@@ -115,13 +119,14 @@ func (s *Service) HandleInternalListBids(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	workID := strings.TrimSpace(r.URL.Query().Get("work_id"))
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
-	bids, err := s.store.ListByWorkID(ctx, workID)
+	limit, offset := parsePagination(r)
+	bids, err := s.store.ListByWorkID(ctx, workID, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to load bids", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load bids")
 		return
 	}
 
@@ -129,6 +134,8 @@ func (s *Service) HandleInternalListBids(w http.ResponseWriter, r *http.Request)
 		"work_id":    workID,
 		"bids":       bids,
 		"total_bids": len(bids),
+		"limit":      limit,
+		"offset":     offset,
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -163,6 +170,9 @@ func validateBid(now time.Time, bid model.BidPacket) error {
 	if bid.WorkID == "" || bid.Price <= 0 || bid.A2AEndpoint == "" {
 		return errors.New("missing required fields")
 	}
+	if err := validateEndpointURL(bid.A2AEndpoint); err != nil {
+		return fmt.Errorf("invalid A2AEndpoint: %w", err)
+	}
 	if bid.Confidence < 0 || bid.Confidence > 1 {
 		return errors.New("confidence must be between 0 and 1")
 	}
@@ -175,10 +185,69 @@ func validateBid(now time.Time, bid model.BidPacket) error {
 	return nil
 }
 
+// validateEndpointURL checks that the A2AEndpoint is a valid HTTPS URL and
+// does not point to private/internal IP ranges (SSRF prevention).
+func validateEndpointURL(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return errors.New("malformed URL")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return errors.New("scheme must be http or https")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return errors.New("missing host")
+	}
+	// Block localhost variants
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "0.0.0.0" {
+		return errors.New("localhost endpoints not allowed")
+	}
+	// Block cloud metadata endpoints
+	if lower == "169.254.169.254" || lower == "metadata.google.internal" {
+		return errors.New("metadata endpoints not allowed")
+	}
+	// Block private IP ranges
+	ip := net.ParseIP(host)
+	if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+		return errors.New("private IP addresses not allowed")
+	}
+	return nil
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
+}
+
+func parsePagination(r *http.Request) (limit, offset int) {
+	limit = 100
+	offset = 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	return limit, offset
 }
 
 func generateBidID() string {

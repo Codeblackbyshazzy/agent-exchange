@@ -3,7 +3,9 @@ package events
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,10 +22,12 @@ import (
 // for server-side deduplication. If no NATS client is present the publisher
 // falls back to logging only (useful for tests and local development).
 type Publisher struct {
-	source     string
-	natsClient *aexnats.Client
-	httpClient *http.Client
-	endpoints  map[string]string // eventType -> webhook URL
+	source        string
+	natsClient    *aexnats.Client
+	httpClient    *http.Client
+	endpoints     map[string]string // eventType -> webhook URL
+	webhookSecret string            // HMAC-SHA256 secret for webhook signatures
+	maxRetries    int               // max webhook delivery attempts (default 3)
 }
 
 // NewPublisher creates a new event publisher that logs events only. Use
@@ -34,7 +38,8 @@ func NewPublisher(source string) *Publisher {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-		endpoints: make(map[string]string),
+		endpoints:  make(map[string]string),
+		maxRetries: 3,
 	}
 }
 
@@ -48,8 +53,15 @@ func NewPublisherWithNATS(source string, nc *aexnats.Client) *Publisher {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-		endpoints: make(map[string]string),
+		endpoints:  make(map[string]string),
+		maxRetries: 3,
 	}
+}
+
+// WithWebhookSecret sets the HMAC-SHA256 secret used to sign webhook payloads.
+// The signature is sent in the X-Webhook-Signature header.
+func (p *Publisher) WithWebhookSecret(secret string) {
+	p.webhookSecret = secret
 }
 
 // WithNATS attaches a NATS client to an existing publisher.
@@ -135,35 +147,83 @@ func (p *Publisher) sendWebhook(ctx context.Context, url string, envelope Envelo
 		return fmt.Errorf("marshal event: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+	backoff := 500 * time.Millisecond
+	for attempt := 1; attempt <= p.maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Event-ID", envelope.EventID)
+		req.Header.Set("X-Event-Type", envelope.EventType)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+		// HMAC-SHA256 signature if secret configured
+		if p.webhookSecret != "" {
+			sig := computeHMAC(body, p.webhookSecret)
+			req.Header.Set("X-Webhook-Signature", "sha256="+sig)
+		}
+
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			slog.WarnContext(ctx, "webhook_delivery_failed",
+				"url", url,
+				"event_type", envelope.EventType,
+				"attempt", attempt,
+				"error", err,
+			)
+			if attempt < p.maxRetries {
+				select {
+				case <-time.After(backoff):
+					backoff *= 2
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				continue
+			}
+			return nil // exhausted retries, don't fail caller
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 500 {
+			slog.WarnContext(ctx, "webhook_server_error",
+				"url", url,
+				"event_type", envelope.EventType,
+				"status", resp.StatusCode,
+				"attempt", attempt,
+			)
+			if attempt < p.maxRetries {
+				select {
+				case <-time.After(backoff):
+					backoff *= 2
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				continue
+			}
+			return nil
+		}
+
+		if resp.StatusCode >= 400 {
+			slog.WarnContext(ctx, "webhook_client_error",
+				"url", url,
+				"event_type", envelope.EventType,
+				"status", resp.StatusCode,
+			)
+		}
+
+		// Success (2xx/3xx) or client error (4xx, no retry)
+		return nil
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Event-ID", envelope.EventID)
-	req.Header.Set("X-Event-Type", envelope.EventType)
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		slog.WarnContext(ctx, "webhook_failed",
-			"url", url,
-			"event_type", envelope.EventType,
-			"error", err,
-		)
-		return nil // Don't fail on webhook errors
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		slog.WarnContext(ctx, "webhook_error",
-			"url", url,
-			"event_type", envelope.EventType,
-			"status", resp.StatusCode,
-		)
-	}
-
 	return nil
+}
+
+// computeHMAC generates an HMAC-SHA256 hex signature for webhook payload verification.
+func computeHMAC(payload []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func generateEventID() string {

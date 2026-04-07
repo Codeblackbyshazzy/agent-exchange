@@ -31,6 +31,7 @@ data:
   # --- Infrastructure URLs ---
   REDIS_URL: "redis://redis:6379"
   NATS_URL: "nats://nats:4222"
+  NATS_STREAM_REPLICAS: "1"
 
   # --- Agent / Demo URLs ---
   AEX_GATEWAY_URL: "http://aex-gateway.aex.svc.cluster.local:8080"

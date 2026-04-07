@@ -42,19 +42,19 @@ func (s *Service) HandleEvaluate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
 	var req model.EvaluateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 	req.WorkID = strings.TrimSpace(req.WorkID)
 	if req.WorkID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
@@ -73,13 +73,13 @@ func (s *Service) HandleEvaluate(w http.ResponseWriter, r *http.Request) {
 		work.Description = *req.Description
 	}
 	if work.Budget.MaxPrice <= 0 {
-		http.Error(w, "budget.max_price is required (work-publisher not integrated yet)", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "budget.max_price is required (work-publisher not integrated yet)")
 		return
 	}
 
 	ev, err := s.evaluate(ctx, work)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, ev)
@@ -124,9 +124,9 @@ func (s *Service) evaluate(ctx context.Context, work model.WorkSpec) (model.BidE
 
 		priceScore := clamp01(1 - (bid.Price / work.Budget.MaxPrice))
 		confScore := clamp01(bid.Confidence)
-		mvpScore := 0.5
+		mvpScore := 0.5 // no sample provided
 		if bid.MVPSample != nil {
-			mvpScore = 0.8
+			mvpScore = 0.8 // sample provided, gets scoring boost
 		}
 		slaScore := calculateSLAScore(bid.SLA, work.Constraints)
 
@@ -246,6 +246,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func generateEvalID() string {

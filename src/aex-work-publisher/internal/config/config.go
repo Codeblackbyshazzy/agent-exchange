@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -16,6 +17,8 @@ type Config struct {
 	FirestoreCollection string
 	ProviderRegistryURL string
 	NatsURL             string
+	NatsStreamReplicas  int
+	WebhookSecret       string
 }
 
 func Load() (*Config, error) {
@@ -30,6 +33,8 @@ func Load() (*Config, error) {
 		FirestoreCollection: getEnv("FIRESTORE_COLLECTION_WORK", "work_specs"),
 		ProviderRegistryURL: getEnv("PROVIDER_REGISTRY_URL", "http://localhost:8086"),
 		NatsURL:             getEnv("NATS_URL", ""),
+		NatsStreamReplicas:  getEnvInt("NATS_STREAM_REPLICAS", 1),
+		WebhookSecret:       getEnv("WEBHOOK_SECRET", ""),
 	}
 
 	if cfg.Environment == "production" && cfg.StoreType == "firestore" && cfg.FirestoreProjectID == "" {
@@ -42,6 +47,15 @@ func Load() (*Config, error) {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }

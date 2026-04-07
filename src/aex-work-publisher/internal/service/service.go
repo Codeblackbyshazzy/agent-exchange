@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	ErrInvalidWorkSpec = errors.New("invalid work specification")
-	ErrWorkNotFound    = errors.New("work not found")
-	ErrInvalidState    = errors.New("invalid work state")
+	ErrInvalidWorkSpec  = errors.New("invalid work specification")
+	ErrWorkNotFound     = errors.New("work not found")
+	ErrInvalidState     = errors.New("invalid work state")
+	ErrVersionConflict  = errors.New("version conflict: concurrent modification")
 	DefaultBidWindowMs = int64(30000)  // 30 seconds
 	MaxBidWindowMs     = int64(300000) // 5 minutes
 	MinBidWindowMs     = int64(5000)   // 5 seconds
@@ -130,96 +131,119 @@ func (s *Service) GetWork(ctx context.Context, workID string) (model.WorkSpec, e
 	return work, nil
 }
 
-// CancelWork cancels a work request
+// CancelWork cancels a work request. Uses optimistic concurrency.
 func (s *Service) CancelWork(ctx context.Context, workID, consumerID string) (model.WorkSpec, error) {
-	work, err := s.store.GetWork(ctx, workID)
-	if err != nil {
-		return model.WorkSpec{}, ErrWorkNotFound
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		work, err := s.store.GetWork(ctx, workID)
+		if err != nil {
+			return model.WorkSpec{}, ErrWorkNotFound
+		}
+
+		if work.ConsumerID != consumerID {
+			return model.WorkSpec{}, errors.New("not authorized")
+		}
+
+		if work.State != model.WorkStateOpen && work.State != model.WorkStateEvaluating {
+			return model.WorkSpec{}, fmt.Errorf("%w: cannot cancel work in state %s", ErrInvalidState, work.State)
+		}
+
+		now := time.Now().UTC()
+		work.State = model.WorkStateCancelled
+		work.CompletedAt = &now
+
+		if err := s.store.UpdateWork(ctx, work); err != nil {
+			if errors.Is(err, store.ErrVersionConflict) {
+				continue
+			}
+			return model.WorkSpec{}, fmt.Errorf("update work: %w", err)
+		}
+
+		_ = s.events.Publish(ctx, events.EventWorkCancelled, map[string]any{
+			"work_id":      work.ID,
+			"consumer_id":  work.ConsumerID,
+			"reason":       "consumer_requested",
+			"cancelled_at": now.Format(time.RFC3339Nano),
+		})
+
+		slog.InfoContext(ctx, "work_cancelled", "work_id", work.ID)
+		return work, nil
 	}
-
-	// Verify ownership
-	if work.ConsumerID != consumerID {
-		return model.WorkSpec{}, errors.New("not authorized")
-	}
-
-	// Can only cancel if not yet awarded
-	if work.State != model.WorkStateOpen && work.State != model.WorkStateEvaluating {
-		return model.WorkSpec{}, fmt.Errorf("%w: cannot cancel work in state %s", ErrInvalidState, work.State)
-	}
-
-	now := time.Now().UTC()
-	work.State = model.WorkStateCancelled
-	work.CompletedAt = &now
-
-	if err := s.store.UpdateWork(ctx, work); err != nil {
-		return model.WorkSpec{}, fmt.Errorf("update work: %w", err)
-	}
-
-	// Publish cancellation event
-	_ = s.events.Publish(ctx, events.EventWorkCancelled, map[string]any{
-		"work_id":      work.ID,
-		"consumer_id":  work.ConsumerID,
-		"reason":       "consumer_requested",
-		"cancelled_at": now.Format(time.RFC3339Nano),
-	})
-
-	slog.InfoContext(ctx, "work_cancelled", "work_id", work.ID)
-
-	return work, nil
+	return model.WorkSpec{}, ErrVersionConflict
 }
 
-// OnBidSubmitted handles bid submission notification
+// OnBidSubmitted handles bid submission notification.
+// Uses optimistic concurrency with retry to prevent lost updates from
+// concurrent bid submissions.
 func (s *Service) OnBidSubmitted(ctx context.Context, workID, bidID string) error {
-	work, err := s.store.GetWork(ctx, workID)
-	if err != nil {
-		return err
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		work, err := s.store.GetWork(ctx, workID)
+		if err != nil {
+			return err
+		}
+
+		work.BidsReceived++
+
+		if err := s.store.UpdateWork(ctx, work); err != nil {
+			if errors.Is(err, store.ErrVersionConflict) {
+				slog.DebugContext(ctx, "version conflict on bid submit, retrying",
+					"work_id", workID, "attempt", attempt+1)
+				continue
+			}
+			return err
+		}
+
+		slog.InfoContext(ctx, "bid_received",
+			"work_id", workID,
+			"bid_id", bidID,
+			"total_bids", work.BidsReceived,
+		)
+		return nil
 	}
-
-	work.BidsReceived++
-
-	if err := s.store.UpdateWork(ctx, work); err != nil {
-		return err
-	}
-
-	slog.InfoContext(ctx, "bid_received",
-		"work_id", workID,
-		"bid_id", bidID,
-		"total_bids", work.BidsReceived,
-	)
-
-	return nil
+	return ErrVersionConflict
 }
 
-// CloseBidWindow closes the bid window and transitions to evaluation
+// CloseBidWindow closes the bid window and transitions to evaluation.
+// Uses optimistic concurrency with retry to prevent race with concurrent
+// bid submissions.
 func (s *Service) CloseBidWindow(ctx context.Context, workID string) error {
-	work, err := s.store.GetWork(ctx, workID)
-	if err != nil {
-		return err
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		work, err := s.store.GetWork(ctx, workID)
+		if err != nil {
+			return err
+		}
+
+		if work.State != model.WorkStateOpen {
+			return nil // Already closed
+		}
+
+		work.State = model.WorkStateEvaluating
+
+		if err := s.store.UpdateWork(ctx, work); err != nil {
+			if errors.Is(err, store.ErrVersionConflict) {
+				slog.DebugContext(ctx, "version conflict on close bids, retrying",
+					"work_id", workID, "attempt", attempt+1)
+				continue
+			}
+			return err
+		}
+
+		// Publish bid window closed event
+		_ = s.events.Publish(ctx, events.EventWorkBidWindowClosed, map[string]any{
+			"work_id":   work.ID,
+			"bid_count": work.BidsReceived,
+			"closed_at": time.Now().UTC().Format(time.RFC3339Nano),
+		})
+
+		slog.InfoContext(ctx, "bid_window_closed",
+			"work_id", workID,
+			"bids_received", work.BidsReceived,
+		)
+		return nil
 	}
-
-	if work.State != model.WorkStateOpen {
-		return nil // Already closed
-	}
-
-	work.State = model.WorkStateEvaluating
-
-	if err := s.store.UpdateWork(ctx, work); err != nil {
-		return err
-	}
-
-	// Publish bid window closed event
-	_ = s.events.Publish(ctx, events.EventWorkBidWindowClosed, map[string]any{
-		"work_id":   work.ID,
-		"bid_count": work.BidsReceived,
-		"closed_at": time.Now().UTC().Format(time.RFC3339Nano),
-	})
-
-	slog.InfoContext(ctx, "bid_window_closed",
-		"work_id", workID,
-		"bids_received", work.BidsReceived,
-	)
-
-	return nil
+	return ErrVersionConflict
 }
 
 func (s *Service) validateWorkSpec(req model.WorkSubmission) error {

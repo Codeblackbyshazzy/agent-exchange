@@ -34,19 +34,19 @@ func (s *Service) HandleAward(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	workID := pathParam(r.URL.Path, "/v1/work/", "/award")
 	if workID == "" {
-		http.Error(w, "work_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "WORK_ID_REQUIRED", "work_id is required")
 		return
 	}
 
 	var req model.AwardRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 
 	bids, err := s.bg.ListBids(ctx, workID)
 	if err != nil {
-		http.Error(w, "failed to fetch bids", http.StatusBadGateway)
+		respondError(w, http.StatusBadGateway, "BAD_GATEWAY", "failed to fetch bids")
 		return
 	}
 
@@ -63,7 +63,7 @@ func (s *Service) HandleAward(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if chosen == nil {
-			http.Error(w, "no valid bids to award", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "NO_VALID_BIDS", "no valid bids to award")
 			return
 		}
 		req.BidID = chosen.BidID
@@ -75,11 +75,11 @@ func (s *Service) HandleAward(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if chosen == nil {
-			http.Error(w, "invalid bid_id", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "INVALID_BID_ID", "invalid bid_id")
 			return
 		}
 		if chosen.ExpiresAt.Before(now) {
-			http.Error(w, "bid expired", http.StatusConflict)
+			respondError(w, http.StatusConflict, "BID_EXPIRED", "bid expired")
 			return
 		}
 	}
@@ -107,7 +107,7 @@ func (s *Service) HandleAward(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.Save(ctx, contract); err != nil {
-		http.Error(w, "failed to save contract", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to save contract")
 		return
 	}
 
@@ -129,16 +129,16 @@ func (s *Service) HandleGetContract(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	contractID := pathParam(r.URL.Path, "/v1/contracts/", "")
 	if contractID == "" {
-		http.Error(w, "contract_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CONTRACT_ID_REQUIRED", "contract_id is required")
 		return
 	}
 	c, err := s.store.Get(ctx, contractID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if c == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -148,35 +148,41 @@ func (s *Service) HandleProgress(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	contractID := pathParam(r.URL.Path, "/v1/contracts/", "/progress")
 	if contractID == "" {
-		http.Error(w, "contract_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CONTRACT_ID_REQUIRED", "contract_id is required")
 		return
 	}
 	token := bearerToken(r)
 	if token == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	var req model.ProgressRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 
 	c, err := s.store.Get(ctx, contractID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if c == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	if c.ExecutionToken != token {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		respondError(w, http.StatusGone, "CONTRACT_EXPIRED", "contract expired")
+		return
+	}
 	c.ExecutionUpdates = append(c.ExecutionUpdates, model.ExecutionUpdate{
 		Status:    req.Status,
 		Percent:   req.Percent,
@@ -188,7 +194,7 @@ func (s *Service) HandleProgress(w http.ResponseWriter, r *http.Request) {
 		c.StartedAt = &now
 	}
 	if err := s.store.Update(ctx, *c); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"acknowledged": true, "contract_id": contractID})
@@ -198,35 +204,41 @@ func (s *Service) HandleComplete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	contractID := pathParam(r.URL.Path, "/v1/contracts/", "/complete")
 	if contractID == "" {
-		http.Error(w, "contract_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CONTRACT_ID_REQUIRED", "contract_id is required")
 		return
 	}
 	token := bearerToken(r)
 	if token == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	var req model.CompleteRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 
 	c, err := s.store.Get(ctx, contractID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if c == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	if c.ExecutionToken != token {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		respondError(w, http.StatusGone, "CONTRACT_EXPIRED", "contract expired")
+		return
+	}
 	c.Status = model.ContractStatusCompleted
 	c.CompletedAt = &now
 	c.Outcome = &model.OutcomeReport{
@@ -237,7 +249,7 @@ func (s *Service) HandleComplete(w http.ResponseWriter, r *http.Request) {
 		ReportedAt:     now,
 	}
 	if err := s.store.Update(ctx, *c); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -251,41 +263,47 @@ func (s *Service) HandleFail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	contractID := pathParam(r.URL.Path, "/v1/contracts/", "/fail")
 	if contractID == "" {
-		http.Error(w, "contract_id is required", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "CONTRACT_ID_REQUIRED", "contract_id is required")
 		return
 	}
 	// For local: allow either execution token or consumer token; both are Bearer.
 	token := bearerToken(r)
 	if token == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 	var req model.FailRequest
 	if err := decodeJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "bad request")
 		return
 	}
 
 	c, err := s.store.Get(ctx, contractID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	if c == nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
 	if c.ExecutionToken != token && c.ConsumerToken != token {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
 		return
 	}
 
 	now := time.Now().UTC()
+	if now.After(c.ExpiresAt) {
+		c.Status = model.ContractStatusExpired
+		_ = s.store.Update(ctx, *c)
+		respondError(w, http.StatusGone, "CONTRACT_EXPIRED", "contract expired")
+		return
+	}
 	c.Status = model.ContractStatusFailed
 	c.FailedAt = &now
 	c.FailureReason = &req.Reason
 	if err := s.store.Update(ctx, *c); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -309,6 +327,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func respondError(w http.ResponseWriter, statusCode int, code string, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":      code,
+			"message":   message,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 func bearerToken(r *http.Request) string {

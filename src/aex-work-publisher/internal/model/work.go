@@ -52,10 +52,11 @@ type WorkSpec struct {
 	BidWindowMs     int64              `json:"bid_window_ms" firestore:"bid_window_ms"`
 	Payload         map[string]any     `json:"payload" firestore:"payload"`
 
-	State             WorkState `json:"status" firestore:"status"`
-	ProvidersNotified int       `json:"providers_notified" firestore:"providers_notified"`
-	BidsReceived      int       `json:"bids_received" firestore:"bids_received"`
-	ContractID        *string   `json:"contract_id,omitempty" firestore:"contract_id,omitempty"`
+	State             WorkState `json:"status" firestore:"status" bson:"status"`
+	ProvidersNotified int       `json:"providers_notified" firestore:"providers_notified" bson:"providers_notified"`
+	BidsReceived      int       `json:"bids_received" firestore:"bids_received" bson:"bids_received"`
+	ContractID        *string   `json:"contract_id,omitempty" firestore:"contract_id,omitempty" bson:"contract_id,omitempty"`
+	Version           int       `json:"version" firestore:"version" bson:"version"`
 
 	CreatedAt       time.Time  `json:"created_at" firestore:"created_at"`
 	BidWindowEndsAt time.Time  `json:"bid_window_ends_at" firestore:"bid_window_ends_at"`

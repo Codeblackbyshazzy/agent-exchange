@@ -18,6 +18,14 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Require JWT_SECRET in non-development environments
+	if cfg.JWTSecret == "" && cfg.Environment != "development" {
+		log.Fatal("JWT_SECRET is required in production. Set JWT_SECRET environment variable.")
+	}
+	if cfg.JWTSecret == "" {
+		log.Println("WARNING: JWT_SECRET is empty. JWT authentication is disabled. Set JWT_SECRET for production use.")
+	}
+
 	// Setup structured logging with trace correlation
 	logHandler := telemetry.TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,

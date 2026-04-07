@@ -85,6 +85,9 @@ patches:
       - op: replace
         path: /data/ENVIRONMENT
         value: "production"
+      - op: replace
+        path: /data/NATS_STREAM_REPLICAS
+        value: "3"
 
   # --- Production: 3 replicas for core services (HPA will manage scaling) ---
   - target:

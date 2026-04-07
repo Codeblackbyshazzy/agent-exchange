@@ -63,12 +63,21 @@ func (s *MongoWorkStore) UpdateWork(ctx context.Context, work model.WorkSpec) er
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	result, err := s.coll.ReplaceOne(ctx, bson.M{"id": work.ID}, work)
+	// Optimistic concurrency: match on both ID and current version
+	filter := bson.M{"id": work.ID, "version": work.Version}
+	work.Version++
+
+	result, err := s.coll.ReplaceOne(ctx, filter, work)
 	if err != nil {
 		return err
 	}
 	if result.MatchedCount == 0 {
-		return errors.New("work not found")
+		// Either not found or version mismatch
+		exists := s.coll.FindOne(ctx, bson.M{"id": work.ID})
+		if exists.Err() != nil {
+			return errors.New("work not found")
+		}
+		return ErrVersionConflict
 	}
 	return nil
 }

@@ -22,6 +22,16 @@ import (
 // are being rejected to protect the downstream service.
 var ErrCircuitOpen = errors.New("circuit breaker is open")
 
+// serverError signals a 5xx response to the circuit breaker without hiding
+// the response from the caller.
+type serverError struct {
+	statusCode int
+}
+
+func (e *serverError) Error() string {
+	return fmt.Sprintf("server error: %d", e.statusCode)
+}
+
 // CircuitBreakerConfig defines circuit breaker behavior
 type CircuitBreakerConfig struct {
 	// MaxConsecutiveFailures is the number of consecutive failures before the
@@ -152,15 +162,33 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	result, err := c.breaker.Execute(func() (interface{}, error) {
-		return c.doWithRetry(ctx, req)
+		resp, err := c.doWithRetry(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		// Only count 5xx as circuit breaker failures.
+		// 4xx errors are client mistakes and must NOT trip the breaker.
+		if resp.StatusCode >= 500 {
+			return resp, &serverError{statusCode: resp.StatusCode}
+		}
+		return resp, nil
 	})
 	if err != nil {
-		span.RecordError(err)
 		// Map gobreaker's sentinel error to our own ErrCircuitOpen so callers
 		// don't need to depend on the gobreaker package.
 		if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+			span.RecordError(err)
 			return nil, fmt.Errorf("%s: %w", c.serviceName, ErrCircuitOpen)
 		}
+		// For 5xx server errors the response is still returned alongside the
+		// error so the breaker counts the failure. Extract the response.
+		var se *serverError
+		if errors.As(err, &se) && result != nil {
+			resp := result.(*http.Response)
+			span.SetAttributes(attribute.Int("http.status_code", resp.StatusCode))
+			return resp, nil
+		}
+		span.RecordError(err)
 		return nil, err
 	}
 

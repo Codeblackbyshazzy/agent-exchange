@@ -54,12 +54,21 @@ func (v *InMemoryAPIKeyValidator) AddKey(apiKey string, info *APIKeyInfo) {
 	v.keys[apiKey] = info
 }
 
-// HTTPAPIKeyValidator validates API keys via HTTP call to identity service
+// HTTPAPIKeyValidator validates API keys via HTTP call to identity service.
+// Includes a simple circuit breaker to prevent stampeding the identity service
+// when it's down. After 5 consecutive failures, requests are rejected for 10s.
 type HTTPAPIKeyValidator struct {
 	identityURL string
 	client      *http.Client
 	cache       sync.Map
 	cacheTTL    time.Duration
+
+	// Circuit breaker state
+	cbMu                 sync.Mutex
+	consecutiveFailures  int
+	cbOpenUntil          time.Time
+	cbFailureThreshold   int
+	cbOpenDuration       time.Duration
 }
 
 type cachedKey struct {
@@ -69,9 +78,11 @@ type cachedKey struct {
 
 func NewHTTPAPIKeyValidator(identityURL string) *HTTPAPIKeyValidator {
 	return &HTTPAPIKeyValidator{
-		identityURL: identityURL,
-		client:      &http.Client{Timeout: 5 * time.Second},
-		cacheTTL:    5 * time.Minute,
+		identityURL:        identityURL,
+		client:             &http.Client{Timeout: 5 * time.Second},
+		cacheTTL:           5 * time.Minute,
+		cbFailureThreshold: 5,
+		cbOpenDuration:     10 * time.Second,
 	}
 }
 
@@ -85,6 +96,11 @@ func (v *HTTPAPIKeyValidator) Validate(ctx context.Context, apiKey string) (*API
 		v.cache.Delete(apiKey)
 	}
 
+	// Check circuit breaker - fast-fail if identity service is down
+	if v.isBreakerOpen() {
+		return nil, fmt.Errorf("identity service circuit breaker open")
+	}
+
 	// Call identity service
 	reqBody, _ := json.Marshal(map[string]string{"api_key": apiKey})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, v.identityURL+"/internal/v1/apikeys/validate", strings.NewReader(string(reqBody)))
@@ -95,9 +111,18 @@ func (v *HTTPAPIKeyValidator) Validate(ctx context.Context, apiKey string) (*API
 
 	resp, err := v.client.Do(req)
 	if err != nil {
+		v.recordFailure()
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 500 {
+		v.recordFailure()
+		return nil, nil
+	}
+
+	// Success or 4xx - reset breaker
+	v.recordSuccess()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil
@@ -129,6 +154,34 @@ func (v *HTTPAPIKeyValidator) Validate(ctx context.Context, apiKey string) (*API
 	})
 
 	return info, nil
+}
+
+func (v *HTTPAPIKeyValidator) isBreakerOpen() bool {
+	v.cbMu.Lock()
+	defer v.cbMu.Unlock()
+	if v.consecutiveFailures >= v.cbFailureThreshold {
+		if time.Now().Before(v.cbOpenUntil) {
+			return true
+		}
+		// Half-open: allow one request through
+		v.consecutiveFailures = v.cbFailureThreshold - 1
+	}
+	return false
+}
+
+func (v *HTTPAPIKeyValidator) recordFailure() {
+	v.cbMu.Lock()
+	defer v.cbMu.Unlock()
+	v.consecutiveFailures++
+	if v.consecutiveFailures >= v.cbFailureThreshold {
+		v.cbOpenUntil = time.Now().Add(v.cbOpenDuration)
+	}
+}
+
+func (v *HTTPAPIKeyValidator) recordSuccess() {
+	v.cbMu.Lock()
+	defer v.cbMu.Unlock()
+	v.consecutiveFailures = 0
 }
 
 // jwtConfig holds the configuration for JWT validation.
@@ -248,6 +301,7 @@ func respondError(w http.ResponseWriter, status int, code, message string, r *ht
 			"code":       code,
 			"message":    message,
 			"request_id": GetRequestID(r.Context()),
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 }

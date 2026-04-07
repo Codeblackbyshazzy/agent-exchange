@@ -43,10 +43,17 @@ func (s *MemoryStore) UpdateWork(ctx context.Context, work model.WorkSpec) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.works[work.ID]; !ok {
+	existing, ok := s.works[work.ID]
+	if !ok {
 		return errors.New("work not found")
 	}
 
+	// Optimistic concurrency: reject if version doesn't match
+	if work.Version != existing.Version {
+		return ErrVersionConflict
+	}
+
+	work.Version++
 	s.works[work.ID] = work
 	return nil
 }

@@ -9,7 +9,7 @@ import (
 
 type BidStore interface {
 	Save(ctx context.Context, bid model.BidPacket) error
-	ListByWorkID(ctx context.Context, workID string) ([]model.BidPacket, error)
+	ListByWorkID(ctx context.Context, workID string, limit, offset int) ([]model.BidPacket, error)
 }
 
 type MemoryBidStore struct {
@@ -31,12 +31,19 @@ func (s *MemoryBidStore) Save(ctx context.Context, bid model.BidPacket) error {
 	return nil
 }
 
-func (s *MemoryBidStore) ListByWorkID(ctx context.Context, workID string) ([]model.BidPacket, error) {
+func (s *MemoryBidStore) ListByWorkID(ctx context.Context, workID string, limit, offset int) ([]model.BidPacket, error) {
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	bids := s.byWorkID[workID]
-	out := make([]model.BidPacket, len(bids))
-	copy(out, bids)
+	if offset >= len(bids) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(bids) {
+		end = len(bids)
+	}
+	out := make([]model.BidPacket, end-offset)
+	copy(out, bids[offset:end])
 	return out, nil
 }
