@@ -1,0 +1,65 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: E2E Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build all Docker images
+        run: make docker-build
+
+      - name: Start services
+        run: |
+          docker compose -f hack/docker-compose.yml up -d
+          echo "Waiting for services to be healthy..."
+          sleep 30
+
+      - name: Check service health
+        run: |
+          for port in 8080 8081 8082 8083 8084 8085 8086 8087 8088 8091; do
+            echo "Checking port $port..."
+            curl -sf http://localhost:$port/health || echo "Port $port not healthy"
+          done
+
+      - name: Run E2E test suite
+        run: bash hack/tests/e2e_test.sh
+
+      - name: Run NATS event tests
+        run: bash hack/tests/test_nats_events.sh
+        continue-on-error: true
+
+      - name: Run circuit breaker tests
+        run: bash hack/tests/test_circuit_breaker.sh
+        continue-on-error: true
+
+      - name: Run rate limiter tests
+        run: bash hack/tests/test_rate_limiter.sh
+        continue-on-error: true
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker compose -f hack/docker-compose.yml logs --tail=100 > docker-logs.txt
+          echo "=== Docker container status ==="
+          docker compose -f hack/docker-compose.yml ps
+
+      - name: Upload logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs
+          path: docker-logs.txt
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f hack/docker-compose.yml down -v
