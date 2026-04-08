@@ -259,7 +259,7 @@ assert_json_field "$_BODY" '.status' "ACTIVE" "10.4e: Verified status is ACTIVE"
 # 10.4f  Check CRL
 http_both GET "$CERTAUTH_URL/v1/crl"
 assert_status "200" "$_STATUS" "10.4f: Get CRL"
-assert_json_field "$_BODY" '.issuer' "aex-certauth" "10.4f: CRL issuer"
+assert_json_field "$_BODY" '.issuer_id' "aex-certauth" "10.4f: CRL issuer"
 
 # 10.4g  Get reputation
 http_both GET "$CERTAUTH_URL/v1/providers/${PROVIDER_A_ID}/reputation"

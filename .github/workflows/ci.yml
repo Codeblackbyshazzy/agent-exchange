@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  # ── Lint & Test all Go modules ──────────────────────────────────
+  lint-test:
+    name: Lint & Test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          # Shared libraries
+          - internal/events
+          - internal/httpclient
+          - internal/nats
+          - internal/telemetry
+          - internal/certauth
+          - internal/ap2
+          - internal/testutil
+          # Services
+          - aex-gateway
+          - aex-work-publisher
+          - aex-bid-gateway
+          - aex-bid-evaluator
+          - aex-contract-engine
+          - aex-provider-registry
+          - aex-trust-broker
+          - aex-identity
+          - aex-settlement
+          - aex-telemetry
+          - aex-certauth
+          - aex-credentials-provider
+          - aex-token-bank
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/${{ matrix.module }}/go.sum
+
+      - name: Go vet
+        working-directory: src/${{ matrix.module }}
+        run: go vet ./...
+
+      - name: Go test
+        working-directory: src/${{ matrix.module }}
+        run: go test ./... -timeout 120s
+
+  # ── Build all Docker images ─────────────────────────────────────
+  docker-build:
+    name: Docker Build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aex-gateway
+          - aex-work-publisher
+          - aex-bid-gateway
+          - aex-bid-evaluator
+          - aex-contract-engine
+          - aex-provider-registry
+          - aex-trust-broker
+          - aex-identity
+          - aex-settlement
+          - aex-telemetry
+          - aex-certauth
+          - aex-credentials-provider
+          - aex-token-bank
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f src/${{ matrix.service }}/Dockerfile \
+            -t agent-exchange/${{ matrix.service }}:ci \
+            src/
+
+  # ── Summary gate ────────────────────────────────────────────────
+  ci-pass:
+    name: CI Pass
+    needs: [lint-test, docker-build]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.lint-test.result }}" != "success" ] || [ "${{ needs.docker-build.result }}" != "success" ]; then
+            echo "CI failed: lint-test=${{ needs.lint-test.result }}, docker-build=${{ needs.docker-build.result }}"
+            exit 1
+          fi
+          echo "All CI checks passed"
